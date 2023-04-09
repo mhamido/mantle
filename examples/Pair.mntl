@@ -1,0 +1,11 @@
+module Pair with
+
+data Pair 'a 'b = MkPair
+    /* fst */ 'a 
+    /* snd */ 'b
+
+fun fst ['a, 'b](p: Pair 'a 'b): 'a =
+    case p of MkPair x _ => x
+
+fun snd ['a, 'b](p: Pair 'a 'b): 'b =
+    case p of MkPair _ x => x

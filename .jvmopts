@@ -1,0 +1,5 @@
+-Xms1G 
+-Xmx4G 
+-XX:+UseG1GC
+-XX:MaxInlineLevel=35
+-XX:ReservedCodeCacheSize=512m

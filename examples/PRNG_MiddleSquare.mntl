@@ -1,0 +1,14 @@
+module PRNG_MiddleSquare with
+
+/* https://rosettacode.org/wiki/Pseudo-random_numbers/Middle-square_method */
+
+val startingSeed: Int = 675248
+
+fun mod (m: Int) (n: Int): Int = m - n * (m / n)
+fun random (seed: Int): Int = mod (seed * seed / 1000) 1000000
+
+fun main () =
+    let fun loop (n: Int) (seed: Int) =
+        let val () = println seed in
+        if n = 0 then () else loop (n - 1) (random seed) 
+    in loop 10 startingSeed

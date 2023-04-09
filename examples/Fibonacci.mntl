@@ -1,0 +1,13 @@
+module Fibonacci with
+
+fun slowFib (n: Int): Int =
+    if n <= 1 then n
+    else slowFib (n - 1) + slowFib (n - 2)
+
+fun fib (n: Int): Int =
+    let fun loop (n: Int) (prev: Int) (curr: Int): Int =
+            if n = 0 then curr
+            else loop (n - 1) curr (prev + curr)
+    in loop n 0 1
+
+fun main () = () /* TODO stuff */

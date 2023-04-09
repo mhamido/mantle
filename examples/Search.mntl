@@ -1,0 +1,3 @@
+module Search with
+
+fun linearSearch (xs: Iterator Int)
