@@ -1,0 +1,16 @@
+module Euler.Problem1 with
+
+fun divBy (m: Int) (n: Int): Boolean = 
+  (m - n * (m / n)) = 0
+
+fun solve (lim: Int): Int =
+  let fun loop (i: Int) (n: Int): Int =
+     if i <= 2 then n
+     else if divBy i 3 || divBy i 5 || divBy i 10 then
+       loop (i - 1) (n + i)
+     else
+       loop (i - 1) n
+  in loop n 0
+ 
+
+fun main(): Unit = println (solve 1000)

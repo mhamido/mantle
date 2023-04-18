@@ -5,18 +5,12 @@ import com.github.plokhotnyuk.jsoniter_scala.core._
 import fansi.Color
 
 import mhamido.mantle.util.Position
-import mhamido.mantle.syntax.Name
 
 case class Token(
     kind: Token.Kind,
     literal: String,
     pos: Position
 ):
-  def toName: Name = literal.head match
-    case '\''           => Name.TypeVar(literal.tail)
-    case u if u.isUpper => Name.Constructor(literal)
-    case _              => Name.Var(literal)
-
   def render: String = s"\"${literal}\" (${kind.render})"
 
 object Token:

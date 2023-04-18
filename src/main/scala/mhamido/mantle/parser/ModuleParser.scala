@@ -1,18 +1,18 @@
 package mhamido.mantle.parser
 
 import mhamido.mantle.Token
-import mhamido.mantle.syntax
+import mhamido.mantle.{syntaxTree => syntax}
 import mhamido.mantle.util.Reporter
-import mhamido.mantle.syntax.Decl
 import scala.annotation.targetName
-import mhamido.mantle.syntax.Type
-import mhamido.mantle.syntax.Pattern
-import mhamido.mantle.syntax.Expr
+import mhamido.mantle.util.Context
 
-final case class ModuleParser(
+final case class ModuleParser private(
     path: os.Path,
     tokens: BufferedIterator[Token]
 )(using reporter: Reporter) {
+
+  import syntax.{Name, Expr, Decl, Type}
+
   def module(): syntax.Module =
     consume(Token.Module)
     val name = qualifiedName()
@@ -21,7 +21,13 @@ final case class ModuleParser(
     consume(Token.Eof)
     syntax.Module(name, defs)
 
-  private def qualifiedName(): Seq[Name] = ???
+  private def qualifiedName(): Seq[Name] =
+    val names = List.newBuilder[Name]
+    names += consume(Token.UpperName).literal
+    while !isAtEnd && peek == Token.Dot do
+      consume(Token.Dot)
+      names += consume(Token.UpperName).literal
+    names.result()
 
   val Start = List(
     Token.Mutual,
@@ -31,11 +37,16 @@ final case class ModuleParser(
     Token.DataType
   )
 
-  private def isAtEnd: Boolean = ???
-  private def peek: Token = ???
-  private def advance(): Token = ???
-  private def consume(kind: Token.Kind): Token = ???
+  private def isAtEnd: Boolean =
+    !tokens.hasNext || peek == Token.Eof
 
+  private def peek: Token = tokens.head
+  private def advance(): Token = tokens.next()
+
+  private def consume(expected: Token.Kind): Token =
+    val next = advance()
+    if next.kind != expected then reporter.error(???, ???)
+    next
   @targetName("matchesvar")
   private def matches(tokens: Token.Kind*): Boolean = matches(tokens)
   private def matches(tokens: Seq[Token.Kind]): Boolean = ???
@@ -177,6 +188,13 @@ final case class ModuleParser(
       case Token.OpenParen => ???
       case Token.Let =>
         val defs = decls(Token.In)
-        
+
     }
 }
+
+object ModuleParser:
+  def apply(srcpath: os.Path, tokens: BufferedIterator[Token])(using
+      ctx: Context
+  ): syntax.Module =
+    val parser = new ModuleParser(srcpath, tokens)(using ctx.reporter)
+    parser.module()

@@ -1,15 +1,16 @@
-package mhamido.mantle.syntax
+package mhamido.mantle
 
 import mhamido.mantle.util.Span
+import mhamido.mantle.syntax.Operator
 
-trait Node {
+abstract class Tree {
   type Info
   type Name
-  type Binder = Name
+//   type Binder = Name
 }
 
-trait AbstractExpr extends Node, AbstractValue {
-  this: AbstractPattern & AbstractType =>
+trait AbstractExpr extends Tree, AbstractValue {
+  this: AbstractPattern & AbstractType & AbstractDecl =>
 
   sealed abstract class Expr(info: Info)
   case class MatchArm(pattern: Pattern, body: Expr, guard: Option[Expr] = None)
@@ -33,12 +34,6 @@ trait AbstractExpr extends Node, AbstractValue {
         right: Expr
     )(using val info: Info)
         extends Expr(info)
-
-    case class Con(
-        name: Name
-    )(using val info: Info)
-        extends Expr(info)
-
     case class Ascribe(
         expr: Expr,
         tpe: Type
@@ -91,7 +86,7 @@ trait AbstractExpr extends Node, AbstractValue {
   }
 }
 
-trait AbstractPattern extends Node, AbstractValue {
+trait AbstractPattern extends Tree, AbstractValue {
   this: AbstractType =>
   sealed trait Pattern(info: Info)
 
@@ -127,7 +122,7 @@ trait AbstractPattern extends Node, AbstractValue {
   }
 }
 
-trait AbstractValue extends Node {
+trait AbstractValue extends Tree {
   this: AbstractExpr & AbstractPattern =>
   sealed abstract class Value(val info: Info) extends Expr(info), Pattern(info)
 
@@ -143,7 +138,7 @@ trait AbstractValue extends Node {
   }
 }
 
-trait AbstractDecl extends Node {
+trait AbstractDecl extends Tree {
   this: AbstractExpr & AbstractType =>
 
   sealed abstract class Param(name: Name)
@@ -152,32 +147,36 @@ trait AbstractDecl extends Node {
 
   sealed abstract class Decl(val info: Info)
   object Decl {
-    case class Type(name: Binder, typeParams: Seq[Name], tpe: Type)
+    case class Type(name: Name, typeParams: Seq[Name], tpe: Type)
     case class Fun(name: Name, params: Seq[Param])
     case class Mutual(decls: Seq[Decl])
   }
 }
 
-trait AbstractType extends Node {
-  sealed trait Type
-  sealed trait Primitive extends Type
-
+trait AbstractType extends Tree {
+  sealed abstract class Type(info: Info)
+  sealed abstract class Primitive(info: Info) extends Type(info)
   object Type {
-    case object Unit extends Primitive
-    case object Char extends Primitive
-    case object Int extends Primitive
-    case object String extends Primitive
-    case object Array extends Primitive
-    case class Named(name: Name) extends Type
-    case class Var(name: Name.TypeVar) extends Type
-    case class Arrow(from: Type, to: Type) extends Type
-    case class Tuple(tpes: Seq[Type]) extends Primitive
-    case class Apply(con: Type, args: Seq[Type]) extends Type
-    case class Record(fields: Map[Name, Type]) extends Type
+    case class Unit()(using info: Info) extends Primitive(info)
+    case class Bool()(using info: Info) extends Primitive(info)
+    case class String()(using info: Info) extends Primitive(info)
+    case class Integer()(using info: Info) extends Primitive(info)
+    case class Var(in: Name)(using info: Info) extends Type(info)
+    case class Array(elem: Type)(using info: Info) extends Primitive(info)
+    case class Fn(in: Type, out: Type)(using info: Info) extends Type(info)
+    case class Named(tycon: Name)(using info: Info) extends Type(info)
+    case class TypeFn(in: Name, out: Type)(using info: Info)
+        extends Type(info)
+    case class App(tyCon: Type, args: Seq[Type])(using info: Info)
+        extends Type(info)
   }
 }
 
-object syntax extends AbstractExpr, AbstractPattern {
-  type Name = String
-  type Info = Span
+trait AbstractModule
+    extends Tree,
+      AbstractDecl,
+      AbstractExpr,
+      AbstractType,
+      AbstractPattern {
+  case class Module(names: Seq[Name], decls: Seq[Decl])
 }

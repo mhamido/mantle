@@ -1,6 +1,5 @@
 package mhamido.mantle.semantics
 
-import mhamido.mantle.syntax.Module
 import mhamido.mantle.util.Phase
 import mhamido.mantle.util.Context
 

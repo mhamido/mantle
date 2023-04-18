@@ -20,9 +20,9 @@ class Reporter:
   def warning[A](msg: A, pos: Position = Position.Empty): Unit =
     report(Reporter.Warning, msg, pos)
 
-  def fatalError[A](msg: A, pos: Position = Position.Empty): Nothing =
+  inline def fatalError[A <: Exception](msg: A, pos: Position = Position.Empty): Nothing =
     report(Reporter.Error, msg, pos)
-    sys.exit(1)
+    throw msg
 
   def exitIfErrors(): Unit = if hadErrors then sys.exit(1)
 

@@ -1,8 +1,8 @@
 package mhamido.mantle
-package syntax
 
-final case class Module(
-    name: Seq[Name],
-    // imports: Seq[Import],
-    decls: Seq[Decl]
-)
+import mhamido.mantle.util.Position
+
+object syntaxTree extends AbstractModule {
+  type Info = Position
+  type Name = String
+}
