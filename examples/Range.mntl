@@ -1,0 +1,29 @@
+module Range with
+
+data Range = MkRange
+    /* start:  */ Int 
+    /* end:    */ Int
+    /* stride: */ Int
+
+fun rangeBy (start: Int) (end: Int) (stride: Int) = 
+    MkRange start end stride
+
+fun range (start: Int) (end: Int): Range = rangeBy start end 1
+
+fun toList (range: Range): List Int = 
+    let val MkRange start end stride = range
+        fun loop (end: Int) (acc: List Int) =
+            if end >= start then loop (end - stride) (end :: acc)
+            else acc
+    in loop end []
+
+fun sum (range: Range): Int =
+    let fun slowSum (start: Int) (end: Int) (stride: Int): Int =
+        if stride > 0 then
+        else dosomethng
+ 
+    in case range of {
+        MkRange 1 end 1 if end > 1         -> end * (end + 1) / 2;
+        MkRange start end 1 if end > start -> sum (MkRange 1 (end - start) 1) + start;
+        MkRange start end stride           -> ...;
+    }

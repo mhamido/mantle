@@ -1,0 +1,27 @@
+module AVLTree with
+
+/* https://en.wikipedia.org/wiki/AVL_tree */
+
+type Height = Int
+
+datatype Tree a
+    = Empty
+    | Branch Height a (Tree a) (Tree a)
+
+
+fun height ['a] (t: Tree 'a): Int =
+    case t of {
+        Empty -> 0;
+        Branch h _ _ _ -> h
+    }
+
+/*
+fun search ['a] {'a: Ord} (p: 'a -> Bool): '
+*/
+
+/* Map 'a 'b = Tree ('a, 'b) */
+
+fun lookup ['a, 'b](t: 'a): Tree ('a, 'b) -> Option 'b = 
+    compose (Option.map (fn (_, v) => v)) (Tree.search (fn (k, _) => k = t))
+
+/* Set 'a = Tree 'a */
