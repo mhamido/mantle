@@ -57,7 +57,7 @@ final class Lexer(
         case '}' => Token(Token.CloseBrace, "}", pos) #:: mkTokens()
         case ':' => Token(Token.Colon, ":", pos) #:: mkTokens()
         case '.' => Token(Token.Dot, ":", pos) #:: mkTokens()
-        case ';' => Token(Token.Semi, ":", pos) #:: mkTokens()
+        case ';' => Token(Token.Semi, ";", pos) #:: mkTokens()
         case ',' => Token(Token.Comma, ",", pos) #:: mkTokens()
         case '"' => finishString() #:: mkTokens()
         // case '\'' =>

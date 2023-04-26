@@ -16,13 +16,13 @@ trait DeclParser extends Parser {
         case _ => Type.Unit()(using pos)
       }
       consume(Token.Eql)
-      val body = expr(terminators*)
+      val body = expr()
       Decl.Fun(name.literal, typarams, params, returnType, body)(using name.pos)
 
     case Token.Val =>
       val patt = pattern(Token.Eql)
       consume(Token.Eql)
-      val body = expr(terminators*)
+      val body = expr()
       Decl.Val(patt, body)(using patt.info)
 
     case Token.Mutual =>
