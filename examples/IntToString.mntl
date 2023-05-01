@@ -4,7 +4,7 @@ fun mod (m: Int) (n: Int): Int =
     m - n * (m / n)
 
 fun intToString (n: Int): String =
-    if n < 0 then "-" <> intToString (-n)
+    if n < 0 then concat "-" (intToString (-n))
     else case n of {
         0 -> "0";
         1 -> "1";
@@ -16,7 +16,7 @@ fun intToString (n: Int): String =
         7 -> "7";
         8 -> "8";
         9 -> "9";
-        n -> intToString (n / 10) <> intToString (mod n 10) 
+        n -> concat (intToString (n / 10)) (intToString (mod n 10)) 
     }
 
 /* Calculate how many digits there are in an integer */

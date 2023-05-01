@@ -17,12 +17,21 @@ abstract class Parser(using val reporter: Reporter) {
   def isAtEnd: Boolean = !tokens.hasNext || (peek is Token.Eof)
   def matches(kinds: Token.Kind*): Boolean = kinds exists (peek is _)
 
-  def consume(kind: Token.Kind): Option[Token] =
-    Option.when(matches(kind))(advance())
+  def consume(kinds: Token.Kind*): Option[Token] =
+    if matches(kinds*) then Some(advance())
+    else {
+      reporter.error(
+        Parser.Unexpected(kinds, tokens.headOption),
+        peek.pos
+      )
+
+      None
+    }
+    // Option.when(matches(kind))(advance())
 
   def peek[A](pf: Token ?=> Token.Kind => A): A =
     pf(using peek)(peek.kind)
-    
+
   def expect[A](pf: Token ?=> PartialFunction[Token.Kind, A]): A =
     val token = peek
     // TODO: Handle parser recovery
@@ -54,7 +63,7 @@ object Parser {
       got: Option[Token]
   ) extends Error {
     override def getMessage(): String =
-      val actual = got.map(tok => s"Unexpected token: ${tok.render} ")
+      val actual = got.map(tok => s"Unexpected token ${tok.render} at line: ${tok.pos.line} col: ${tok.pos.column} ")
       val expected =
         s"Expected any of the following tokens: ${expecting map (r => s"'${r.render}'") mkString ","}."
       actual.fold(expected)(_ + expected)

@@ -36,7 +36,7 @@ object Token:
     case Module, Import, With, Interface, Instance
     case For, While, DownTo, To, Do, Mut
     case If, Then, Else, As, Fn
-    case Match
+    case Case, Of
 
     case Dot, Semi, Colon, Comma
     case ThinArrow, ThickArrow, LeftArrow
@@ -84,6 +84,8 @@ object Token:
       case In               => "in"
       case Type             => "type"
       case DataType         => "datatype"
+      case Case             => "case"
+      case Of               => "of"
       case Mutual           => "mutual"
       case Module           => "module"
       case Import           => "import"
@@ -101,7 +103,6 @@ object Token:
       case Else             => "else"
       case As               => "as"
       case Fn               => "fn"
-      case Match            => "match"
       case Dot              => "."
       case Semi             => ";"
       case Colon            => ":"

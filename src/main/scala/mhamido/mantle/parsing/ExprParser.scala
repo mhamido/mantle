@@ -9,42 +9,42 @@ trait ExprParser extends Parser {
   type Prefix = Token => Expr
   type Infix = (Expr, Token) => Expr
 
-  val prefixes = Map[Token.Kind, Prefix](
-    Token.Not -> { token =>
+  val prefixes: PartialFunction[Token.Kind, Prefix] = {
+    case Token.Not => { token =>
       val rhs = expr(ExprParser.HighestPrec)
       Expr.Not(rhs)(using token.pos)
-    },
-    Token.Sub -> { token =>
+    }
+    case Token.Sub => { token =>
       val rhs = expr(ExprParser.HighestPrec)
       Expr.Negate(rhs)(using token.pos)
-    },
-    Token.If -> { token =>
+    }
+    case Token.If => { token =>
       val cond = expr()
       consume(Token.Then)
       val thenp = expr() // (Token.Else)
       consume(Token.Else)
       val elsep = expr()
       Expr.If(cond, thenp, elsep)(using token.pos)
-    },
-    Token.Let -> { token =>
+    }
+    case Token.Let => { token =>
       val defs = Decl.Mutual(decls(Token.In))(using token.pos)
       consume(Token.In)
       val body = expr()
       Expr.Let(Seq(defs), body)(using token.pos)
-    },
-    Token.While -> { token =>
+    }
+    case Token.While => { token =>
       val cond = expr()
       consume(Token.Do)
       val body = expr()
       Expr.While(cond, body)(using token.pos)
-    },
-    Token.Fn -> { token =>
+    }
+    case Token.Fn => { token =>
       val params = patterns(Token.ThickArrow)
       consume(Token.ThickArrow)
       val body = expr()
       Expr.Fn(params, body)(using token.pos)
-    },
-    Token.For -> { token =>
+    }
+    case Token.For => { token =>
       val init = pattern(Token.LeftArrow)
       consume(Token.LeftArrow)
       val start = expr() // condExpr(Token.To)
@@ -53,28 +53,52 @@ trait ExprParser extends Parser {
       consume(Token.Do)
       val body = expr()
       Expr.For(init, start, end, body)(using token.pos)
-    },
-    Token.Match -> { token =>
+    }
+    case Token.Case => { token =>
       val scrutnee = expr() // condExpr(Token.With)
-      consume(Token.With)
+      consume(Token.Of)
       consume(Token.OpenBrace)
       val cases = matchArms()
       consume(Token.CloseBrace)
       Expr.Case(scrutnee, cases)(using token.pos)
-    },
-    Token.Int -> { token => Expr.Int(token.literal.toInt)(using token.pos) },
-    Token.String -> { token => Expr.String(token.literal)(using token.pos) },
-    Token.LowerName -> { token =>
+    }
+
+    case kind if ExprParser.PrimStart contains kind => { token =>
+      val fn = prim(token)
+      val args = List.newBuilder[Expr]
+      while !isAtEnd && matches(ExprParser.PrimStart*) do
+        args += prim(advance())
+      val argsResult = args.result()
+      argsResult.foldLeft(fn)(Expr.Apply(_, _)(using fn.info))
+    }
+  }
+
+  val leftAssoc: Infix = (lhs, op) => {
+    Expr.Bin(Operator(op.kind), lhs, expr(precedence(op.kind)))(using lhs.info)
+  }
+
+  def prim(token: Token): Expr = token.kind match {
+    case Token.Int =>
+      Expr.Int(token.literal.toInt)(using token.pos)
+
+    case Token.String =>
+      Expr.String(token.literal)(using token.pos)
+
+    case Token.LowerName =>
       if (token.literal == "true")
         Expr.True()(using token.pos)
       else if (token.literal == "false")
         Expr.False()(using token.pos)
       else Expr.Var(token.literal)(using token.pos)
-    },
-    Token.UpperName -> { token =>
+
+    case Token.UpperName =>
       Expr.Var(token.literal)(using token.pos)
-    },
-    Token.OpenParen -> { token =>
+
+    case Token.OpenParen if peek.kind == Token.CloseParen =>
+      advance()
+      Expr.Unit()(using token.pos)
+
+    case Token.OpenParen =>
       val result = expr() // (Token.CloseParen, Token.Comma)
       val elems = peek {
         case Token.Comma =>
@@ -89,46 +113,37 @@ trait ExprParser extends Parser {
       }
       consume(Token.CloseParen)
       elems
-    }
-  )
 
-  val leftAssoc: Infix = (lhs, op) => {
-    Expr.Bin(Operator(op.kind), lhs, expr(precedence(op.kind)))(using lhs.info)
+    case tpe =>
+      reporter.fatalError(
+        Parser.Unexpected(ExprParser.PrimStart, Some(token)),
+        token.pos
+      )
   }
 
-  // val infixes: Map[Token.Kind, Infix] = List(
-  //   Token.Mul,
-  //   Token.Div,
-  //   Token.Add,
-  //   Token.Sub,
-  //   Token.LessThan,
-  //   Token.GreaterThan,
-  //   Token.Eql,
-  //   Token.NotEql,
-  //   Token.LogicalOr,
-  //   Token.LogicalAnd,
-  //   Token.Semi
-  // ).map(_ -> leftAssoc).toMap
   val infixes = ExprParser.Operators.flatten.map(_ -> leftAssoc).toMap
 
   def precedence(x: Token.Kind): Int =
     ExprParser.Operators.reverse
       .indexWhere(_.contains(x))
 
-  def expr(prec: Int = 0): Expr = {
-    def unary(): (Expr, Token) = prefixes.get(peek.kind) match {
+  def unary(): (Expr, Token) =
+    prefixes.lift(peek.kind) match {
       case None =>
         reporter.fatalError(
           Parser.Unexpected(
-            prefixes.keys.toSeq,
+            Token.Kind.values.toSeq.filter(prefixes.isDefinedAt(_)),
             if !isAtEnd then Some(peek) else None
           )
         )
+
       case Some(prefixParser) =>
         val token = advance()
-        (prefixParser(token), token)
+        val result = prefixParser(token)
+        (result, token)
     }
 
+  def expr(prec: Int = 0): Expr = {
     def nextPrec: Int = {
       infixes.get(peek.kind).fold(0)(_ => precedence(peek.kind))
     }
@@ -148,11 +163,39 @@ trait ExprParser extends Parser {
     val (expr, token) = unary()
     loop(expr, token)
   }
-  // given Ordering[Token.Kind] with {}
 
-  private def matchArms(): Seq[MatchArm] = ???
+  private def matchArm(): MatchArm = {
+    val pat = pattern(Token.ThinArrow, Token.If)
+    val guard = peek {
+      case Token.If =>
+        advance()
+        Some(expr())
+      case _ => None
+    }
 
-  private def fnApplication(left: Expr): Expr = ???
+    consume(Token.ThinArrow)
+    val body = expr()
+    MatchArm(pat, body, guard)
+  }
+
+  private def matchArms(): Seq[MatchArm] = peek {
+    case Token.CloseBrace => Seq.empty
+    case _ =>
+      val cases = List.newBuilder[MatchArm]
+      cases += matchArm()
+
+      while !isAtEnd && !matches(Token.CloseBrace) do
+        consume(Token.Semi)
+        cases += matchArm()
+
+      // TODO: fix trailing semi in cases
+      peek {
+        case Token.Semi => advance()
+        case _          =>
+      }
+
+      cases.result()
+  }
 
   // private def application(terminators: Token.Kind*): Expr =
   //   val fn = atomic()
@@ -175,9 +218,15 @@ object ExprParser {
     ),
     Seq(Token.Eql, Token.NotEql),
     Seq(Token.LogicalAnd),
-    Seq(Token.LogicalOr),
-    Seq(Token.Semi)
+    Seq(Token.LogicalOr)
   )
 
   val HighestPrec = Operators.map(_.length).sum + 1
+  val PrimStart = Seq(
+    Token.Int,
+    Token.String,
+    Token.LowerName,
+    Token.UpperName,
+    Token.OpenParen
+  )
 }

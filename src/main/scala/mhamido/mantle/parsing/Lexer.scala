@@ -198,7 +198,7 @@ object Lexer:
     "instance" -> Token.Instance,
     "interface" -> Token.Interface,
     "let" -> Token.Let,
-    "match" -> Token.Match,
+    "case" -> Token.Case,
     "module" -> Token.Module,
     "mut" -> Token.Mut,
     "mutual" -> Token.Mutual,
@@ -208,5 +208,6 @@ object Lexer:
     "type" -> Token.Type,
     "val" -> Token.Val,
     "while" -> Token.While,
+    "of" -> Token.Of,
     "with" -> Token.With
   )

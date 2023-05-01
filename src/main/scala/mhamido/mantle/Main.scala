@@ -6,6 +6,7 @@ import scala.io.StdIn
 import mhamido.mantle.parsing.Parser
 import mhamido.mantle.parsing.Token
 import scala.util.Try
+import scala.collection.StringView
 
 object Main {
   def main(args: Array[String]): Unit = {
@@ -18,6 +19,10 @@ object Main {
   def repl()(using ctx: Context): Unit = {
     Console.flush()
     val line = StdIn.readLine()
+    // if line.headOption.fold(false)(_ == ':') then
+    //   val tokens = line.split(' ')
+    //   // todo
+    // else
     if line.nonEmpty then
       val parser =
         for {
@@ -25,10 +30,13 @@ object Main {
         } yield {
           Try {
             val expr = parser.expr()
+            parser.consume(Token.Eof)
             pprint.pprintln(expr, showFieldNames = false)
           }.recover { case ex: Exception =>
             ex.printStackTrace()
-            ctx.reporter.info(parser.tokens.map(_.kind).toList.mkString("{", ",", "}"))
+            ctx.reporter.info(
+              parser.tokens.map(_.kind).toList.mkString("{", ",", "}")
+            )
           }
         }
       repl()
