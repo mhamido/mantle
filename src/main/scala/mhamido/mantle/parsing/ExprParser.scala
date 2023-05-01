@@ -9,14 +9,14 @@ trait ExprParser extends Parser {
   type Prefix = Token => Expr
   type Infix = (Expr, Token) => Expr
 
-  val prefixes: PartialFunction[Token.Kind, Prefix] = {
+  private val prefixes: PartialFunction[Token.Kind, Prefix] = {
     case Token.Not => { token =>
       val rhs = expr(ExprParser.HighestPrec)
-      Expr.Not(rhs)(using token.pos)
+      Expr.Not(rhs)(using token.pos <> rhs.info)
     }
     case Token.Sub => { token =>
       val rhs = expr(ExprParser.HighestPrec)
-      Expr.Negate(rhs)(using token.pos)
+      Expr.Negate(rhs)(using token.pos <> rhs.info)
     }
     case Token.If => { token =>
       val cond = expr()
@@ -24,25 +24,25 @@ trait ExprParser extends Parser {
       val thenp = expr() // (Token.Else)
       consume(Token.Else)
       val elsep = expr()
-      Expr.If(cond, thenp, elsep)(using token.pos)
+      Expr.If(cond, thenp, elsep)(using token.pos <> elsep.info)
     }
     case Token.Let => { token =>
-      val defs = Decl.Mutual(decls(Token.In))(using token.pos)
+      val defs = Decl.Mutual(decls(Token.In))(using token.pos <> pos)
       consume(Token.In)
       val body = expr()
-      Expr.Let(Seq(defs), body)(using token.pos)
+      Expr.Let(Seq(defs), body)(using token.pos <> pos)
     }
     case Token.While => { token =>
       val cond = expr()
       consume(Token.Do)
       val body = expr()
-      Expr.While(cond, body)(using token.pos)
+      Expr.While(cond, body)(using token.pos <> pos)
     }
     case Token.Fn => { token =>
       val params = patterns(Token.ThickArrow)
       consume(Token.ThickArrow)
       val body = expr()
-      Expr.Fn(params, body)(using token.pos)
+      Expr.Fn(params, body)(using token.pos <> pos)
     }
     case Token.For => { token =>
       val init = pattern(Token.LeftArrow)
@@ -52,7 +52,7 @@ trait ExprParser extends Parser {
       val end = expr() // condExpr(Token.Do)
       consume(Token.Do)
       val body = expr()
-      Expr.For(init, start, end, body)(using token.pos)
+      Expr.For(init, start, end, body)(using token.pos <> pos)
     }
     case Token.Case => { token =>
       val scrutnee = expr() // condExpr(Token.With)
@@ -60,7 +60,7 @@ trait ExprParser extends Parser {
       consume(Token.OpenBrace)
       val cases = matchArms()
       consume(Token.CloseBrace)
-      Expr.Case(scrutnee, cases)(using token.pos)
+      Expr.Case(scrutnee, cases)(using token.pos <> pos)
     }
 
     case kind if ExprParser.PrimStart contains kind => { token =>
@@ -69,34 +69,34 @@ trait ExprParser extends Parser {
       while !isAtEnd && matches(ExprParser.PrimStart*) do
         args += prim(advance())
       val argsResult = args.result()
-      argsResult.foldLeft(fn)(Expr.Apply(_, _)(using fn.info))
+      argsResult.foldLeft(fn)(Expr.Apply(_, _)(using fn.info.from <> pos))
     }
   }
 
-  val leftAssoc: Infix = (lhs, op) => {
+  private val leftAssoc: Infix = (lhs, op) => {
     Expr.Bin(Operator(op.kind), lhs, expr(precedence(op.kind)))(using lhs.info)
   }
 
-  def prim(token: Token): Expr = token.kind match {
+  private def prim(token: Token): Expr = token.kind match {
     case Token.Int =>
-      Expr.Int(token.literal.toInt)(using token.pos)
+      Expr.Int(token.literal.toInt)(using token.pos <> pos)
 
     case Token.String =>
-      Expr.String(token.literal)(using token.pos)
+      Expr.String(token.literal)(using token.pos <> pos)
 
     case Token.LowerName =>
       if (token.literal == "true")
-        Expr.True()(using token.pos)
+        Expr.True()(using token.pos <> pos)
       else if (token.literal == "false")
-        Expr.False()(using token.pos)
-      else Expr.Var(token.literal)(using token.pos)
+        Expr.False()(using token.pos <> pos)
+      else Expr.Var(token.literal)(using token.pos <> pos)
 
     case Token.UpperName =>
-      Expr.Var(token.literal)(using token.pos)
+      Expr.Var(token.literal)(using token.pos <> pos)
 
     case Token.OpenParen if peek.kind == Token.CloseParen =>
       advance()
-      Expr.Unit()(using token.pos)
+      Expr.Unit()(using token.pos <> pos)
 
     case Token.OpenParen =>
       val result = expr() // (Token.CloseParen, Token.Comma)
@@ -108,7 +108,7 @@ trait ExprParser extends Parser {
             advance()
             elemsbuilder += expr() // (Token.Comma, Token.CloseParen)
           val elems = elemsbuilder.result()
-          Expr.Tuple(elems)(using token.pos)
+          Expr.Tuple(elems)(using token.pos <> pos)
         case _ => result
       }
       consume(Token.CloseParen)
@@ -121,13 +121,13 @@ trait ExprParser extends Parser {
       )
   }
 
-  val infixes = ExprParser.Operators.flatten.map(_ -> leftAssoc).toMap
+  private val infixes = ExprParser.Operators.flatten.map(_ -> leftAssoc).toMap
 
-  def precedence(x: Token.Kind): Int =
+  private def precedence(x: Token.Kind): Int =
     ExprParser.Operators.reverse
       .indexWhere(_.contains(x))
 
-  def unary(): (Expr, Token) =
+  private def unary(): (Expr, Token) =
     prefixes.lift(peek.kind) match {
       case None =>
         reporter.fatalError(

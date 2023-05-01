@@ -2,7 +2,7 @@ val scala3Version = "3.2.2"
 resolvers += Resolver.mavenCentral
 scalacOptions += "-deprecation"
 
-run / fork := true
+// run / fork := true
 run / connectInput := true
 
 lazy val root = project
@@ -21,3 +21,10 @@ lazy val root = project
       "org.scala-lang.modules" %% "scala-parser-combinators" % "2.2.0"
     )
   )
+
+// commands += Command.command("runExamples") { state =>
+//   (baseDirectory.value / "examples" ** ".mt" ** ".mntl").getPaths().foreach { name => 
+//     Command.process(s"run $name", state.copy())
+//   }
+//   state
+// }

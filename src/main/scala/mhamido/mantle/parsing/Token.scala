@@ -18,7 +18,7 @@ object Token:
   export Kind.*
 
   given JsonValueCodec[Token] = JsonCodecMaker.make
-  given JsonValueCodec[Kind] = JsonCodecMaker.make
+  given JsonValueCodec[Seq[Token]] = JsonCodecMaker.make
 
   enum Kind extends Enum[Kind]:
     case Eof, Unknown
@@ -116,3 +116,5 @@ object Token:
       case CloseBracket     => "]"
       case OpenBrace        => "{"
       case CloseBrace       => "}"
+  object Kind:
+    given codec: JsonValueCodec[Kind] = JsonCodecMaker.make

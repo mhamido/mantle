@@ -6,24 +6,24 @@ fun mean (a: Int) (b: Int): Int =
         let val sum:  Int = 0 
             val size: Int = 0     
             val i:    Int = a     
-            val lt:  Bool = lessThan a b 
+            val lt:  Bool = a < b 
         in if lt then 
            loop sum size i 
         else 
            exit sum size i
 
      fun loop (sum: Int) (size: Int) (i: Int): Int = 
-        let val sum:  Int = add sum i
-            val size: Int = add size 1
-            val i:    Int = add i 1
-            val t1:   Bool = lessThan a b
+        let val sum:  Int = sum + i
+            val size: Int = size + 1
+            val i:    Int = i + 1
+            val t1:   Bool = a < b
         in if lt then
            loop sum size i
         else
            exit sum size i
 
      fun exit (sum: Int) (size: Int) (i: Int): Int = 
-        let val t2 = div sum size in t2
+        let val t2 = sum / size in t2
   in 
      start a b
 

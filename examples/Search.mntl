@@ -1,3 +1,24 @@
 module Search with
 
-fun linearSearch (xs: Iterator Int)
+type Range = (Int, Int)
+
+fun range (start: Int) (end: Int): Range = 
+    if start < end then (start, end)
+    else (end, start)
+
+fun linearSearch (p: Int -> Bool) (r: Range): Int =
+    let val (start, end) = r
+        fun loop (i: Int): Int =
+            if p i then i
+            else if i <= end then loop (i + 1)
+            else -1
+    in loop start
+
+fun binarySearch (p: Int -> Bool) (lt: Int -> Bool) (r: Range): Int =
+    let val (start, end) = r
+        fun loop (low: Int) (high: Int): Int =
+            let val mid = low + (high - low) / 2 in
+            if p mid then mid
+            else if lt mid then loop low mid
+            else loop mid high
+    in loop start end

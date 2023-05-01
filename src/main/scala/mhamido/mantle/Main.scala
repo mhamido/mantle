@@ -17,28 +17,22 @@ object Main {
   }
 
   def repl()(using ctx: Context): Unit = {
-    Console.flush()
-    val line = StdIn.readLine()
-    // if line.headOption.fold(false)(_ == ':') then
-    //   val tokens = line.split(' ')
-    //   // todo
-    // else
+    val line = StdIn.readLine("mantle>")
     if line.nonEmpty then
       val parser =
-        for {
-          parser <- ModuleParser(line)
-        } yield {
-          Try {
+        ModuleParser(line)
+          .map { parser =>
             val expr = parser.expr()
             parser.consume(Token.Eof)
             pprint.pprintln(expr, showFieldNames = false)
-          }.recover { case ex: Exception =>
-            ex.printStackTrace()
-            ctx.reporter.info(
-              parser.tokens.map(_.kind).toList.mkString("{", ",", "}")
-            )
           }
-        }
+          .recover { case ex: Exception =>
+            ex.printStackTrace()
+            // ctx.reporter.info(
+            //   parser.tokens.map(_.kind).toList.mkString("{", ",", "}")
+            // )
+          }
+      parser.get
       repl()
   }
 
