@@ -3,6 +3,8 @@ package mhamido.mantle.parsing
 import mhamido.mantle.syntax
 import mhamido.mantle.util.Position
 
+// TODO: fix up the syntax
+
 trait TypeParser extends Parser {
   def tpe(tokens: Seq[Token.Kind] = Seq.empty): Type = {
     val base = typeApplication()
@@ -16,13 +18,14 @@ trait TypeParser extends Parser {
   }
 
   private def typeApplication(): Type = {
-    val fn = peek(prim)
-    val argsBuilder = List.newBuilder[Type]
-    while !isAtEnd && matches(primStarts*) do argsBuilder += peek(prim)
-    argsBuilder.result() match {
-      case Nil => fn
-      case xs  => Type.App(fn, xs)(using fn.info <> pos)
-    }
+    ???
+    // val fn = peek(prim)
+    // val argsBuilder = List.newBuilder[Type]
+    // while !isAtEnd && matches(primStarts*) do argsBuilder += peek(prim)
+    // argsBuilder.result() match {
+    //   case Nil => fn
+    //   case xs  => Type.Constr(fn, xs)(using fn.info <> pos)
+    // }
   }
 
   val primStarts: Seq[Token.Kind] =
@@ -34,7 +37,8 @@ trait TypeParser extends Parser {
       peek {
         case Token.CloseParen =>
           val closeParen = advance()
-          Type.Unit()(using openParen.pos <> closeParen.pos)
+          // Type.Unit()(using openParen.pos <> closeParen.pos)
+          ???
 
         case _ =>
           val elems = List.newBuilder[Type]

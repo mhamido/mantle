@@ -7,7 +7,7 @@ trait ExprParser extends Parser {
   self: DeclParser & TypeParser & PatternParser =>
 
   type Prefix = Token => Expr
-  type Infix = (Expr, Token) => Expr
+  type Infix  = (Expr, Token) => Expr
 
   private val prefixes: PartialFunction[Token.Kind, Prefix] = {
     case Token.Not => { token =>
@@ -26,33 +26,18 @@ trait ExprParser extends Parser {
       val elsep = expr()
       Expr.If(cond, thenp, elsep)(using token.pos <> elsep.info)
     }
+    
     case Token.Let => { token =>
-      val defs = Decl.Mutual(decls(Token.In))(using token.pos <> pos)
+      val defs = decls(Token.In)
       consume(Token.In)
       val body = expr()
-      Expr.Let(Seq(defs), body)(using token.pos <> pos)
-    }
-    case Token.While => { token =>
-      val cond = expr()
-      consume(Token.Do)
-      val body = expr()
-      Expr.While(cond, body)(using token.pos <> pos)
+      Expr.Let(defs, body)(using token.pos <> pos)
     }
     case Token.Fn => { token =>
       val params = patterns(Token.ThickArrow)
       consume(Token.ThickArrow)
       val body = expr()
       Expr.Fn(params, body)(using token.pos <> pos)
-    }
-    case Token.For => { token =>
-      val init = pattern(Token.LeftArrow)
-      consume(Token.LeftArrow)
-      val start = expr() // condExpr(Token.To)
-      consume(Token.To)
-      val end = expr() // condExpr(Token.Do)
-      consume(Token.Do)
-      val body = expr()
-      Expr.For(init, start, end, body)(using token.pos <> pos)
     }
     case Token.Case => { token =>
       val scrutnee = expr() // condExpr(Token.With)
@@ -64,7 +49,7 @@ trait ExprParser extends Parser {
     }
 
     case kind if ExprParser.PrimStart contains kind => { token =>
-      val fn = prim(token)
+      val fn   = prim(token)
       val args = List.newBuilder[Expr]
       while !isAtEnd && matches(ExprParser.PrimStart*) do
         args += prim(advance())
@@ -138,7 +123,7 @@ trait ExprParser extends Parser {
         )
 
       case Some(prefixParser) =>
-        val token = advance()
+        val token  = advance()
         val result = prefixParser(token)
         (result, token)
     }
@@ -151,9 +136,9 @@ trait ExprParser extends Parser {
     def loop(left: Expr, token: Token): Expr = {
       // pprint.pprintln((left, token), showFieldNames = false, height = 1)
       if (prec < nextPrec) {
-        val currToken = advance()
+        val currToken   = advance()
         val infixParser = infixes(currToken.kind)
-        val currLeft = infixParser(left, currToken)
+        val currLeft    = infixParser(left, currToken)
         loop(currLeft, currToken)
       } else {
         left

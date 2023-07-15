@@ -27,31 +27,25 @@ trait DeclParser extends Parser {
       val body = expr()
       Decl.Val(patt, body)(using token.pos <> body.info)
 
-    case Token.Mutual =>
-      val open = summon[Token].pos
-      consume(Token.OpenBrace)
-      val defs = decls(Token.CloseBrace)
-      consume(Token.CloseBrace)
-      Decl.Mutual(defs)(using open <> pos)
-
     case Token.Type =>
       val start = summon[Token].pos
       val name = consume(Token.UpperName).get.literal
       val params = typeParams()
       consume(Token.Eql)
       val ty = tpe(DeclParser.Start)
-      Decl.TypeAlias(name, params, ty)(using start <> ty.info)
+      Decl.Alias(name, params, ty)(using start <> ty.info)
 
     case Token.DataType =>
       val start = summon[Token].pos
       val name = consume(Token.UpperName).get.literal
       val tpe = typeParams()
       consume(Token.Eql)
-      val body: Seq[(Name, Seq[Name])] = {
+      val body: Seq[(Name, Seq[Type])] = {
         ???
       }
     
-      Decl.TypeDef(name, tpe, body)(using start <> pos)
+      Decl.Data(name, tpe, body)(using start <> pos)
+      ???
   }
 
   def decls(terminator: Token.Kind): Seq[Decl] =
@@ -73,6 +67,13 @@ trait DeclParser extends Parser {
       params.result()
     case _ => Seq.empty
   }
+
+  def fun(): Decl.Fun = {
+    
+  }
+
+  
+  def data(): Decl.Data = ???
 }
 
 object DeclParser {

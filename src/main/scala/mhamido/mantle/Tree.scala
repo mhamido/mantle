@@ -2,213 +2,162 @@ package mhamido.mantle
 
 import mhamido.mantle.parsing.Token
 
-abstract class Tree {
+trait AbstractModule { self =>
   type Name
   type Info
-}
+  abstract class Node { def info: Info }
 
-trait AbstractExpr extends Tree, AbstractValue {
-  this: AbstractPattern & AbstractType & AbstractDecl =>
+  def primNameFactory[A <: Node](prim: String): Name
 
-  sealed abstract class Expr(val info: Info)
+  sealed abstract class Type extends Node
+  object Type {
+    case class Var(name: Name)(using override val info: Info) extends Type
+    case class Fn(param: Type, ret: Type)(using override val info: Info)
+        extends Type
+    case class TypeFn(param: Name, ret: Type)(using override val info: Info)
+        extends Type
+    case class Constr(tpe: Name, args: Seq[Type])(using
+        override val info: Info
+    ) extends Type
+
+    final val IntName: Name    = primNameFactory[Type]("Int")
+    final val UnitName: Name   = primNameFactory[Type]("Unit")
+    final val BoolName: Name   = primNameFactory[Type]("Bool")
+    final val ArrayName: Name  = primNameFactory[Type]("Array")
+    final val StringName: Name = primNameFactory[Type]("String")
+
+    def Int(using info: Info): Type              = Constr(IntName, Seq.empty)
+    def Unit(using info: Info): Type             = Constr(UnitName, Seq.empty)
+    def Bool(using info: Info): Type             = Constr(BoolName, Seq.empty)
+    def String(using info: Info): Type           = Constr(StringName, Seq.empty)
+    def Array(tpe: Type)(using info: Info): Type = Constr(ArrayName, Seq(tpe))
+  }
+
+  sealed abstract class Param extends Node
+
+  object Param {
+    case class Type(name: Name)(using override val info: Info) 
+        extends Param
+    case class Value(name: Name, tpe: self.Type)(using override val info: Info)
+        extends Param
+  }
+
+  sealed trait Pattern      extends Node
+  sealed trait BasicPattern extends Node
+  object Pattern {
+    export Value.*
+    case class Wildcard()(using override val info: Info) extends BasicPattern
+    case class Constr(name: Name, typeArgs: Seq[Type], args: Seq[BasicPattern])(
+        using override val info: Info
+    ) extends Pattern
+  }
+
+  sealed abstract class Decl extends Node
+  object Decl {
+    case class Val(binder: BasicPattern, tpe: Type, body: Expr)(using
+        override val info: Info
+    ) extends Decl
+    case class Alias(name: Name, typeParams: Seq[Name], tpe: Type)(using
+        override val info: Info
+    ) extends Decl
+    case class FunGroup(defs: Seq[Fun])(using override val info: Info)
+        extends Decl
+    case class DataGroup(defs: Seq[Data])(using override val info: Info)
+        extends Decl
+
+    case class Fun(name: Name, params: Seq[Param], ret: Type, body: Expr)(using
+        override val info: Info
+    )
+    case class Data(
+        name: Name,
+        typeParams: Seq[Name],
+        constructors: Seq[(Name, Seq[Type])]
+    )(using override val info: Info)
+  }
+
+  sealed abstract class Expr  extends Node
+  sealed abstract class Value extends Expr, Pattern
+  object Value {
+    case class Var(name: Name)(using override val info: Info)
+        extends Value,
+          BasicPattern
+    case class Int(value: scala.Int)(using override val info: Info)
+        extends Value
+    case class String(value: Predef.String)(using override val info: Info)
+        extends Value
+    case class True()(using override val info: Info)  extends Value
+    case class False()(using override val info: Info) extends Value
+  }
+
   case class MatchArm(pattern: Pattern, body: Expr, guard: Option[Expr] = None)
 
   object Expr {
     export Value.*
 
+    case class Do(seq: Seq[Expr])(using override val info: Info) extends Expr
+
     case class Not(
         expr: Expr
     )(using override val info: Info)
-        extends Expr(info)
+        extends Expr
 
     case class Negate(
         expr: Expr
     )(using override val info: Info)
-        extends Expr(info)
+        extends Expr
 
     case class Bin(
         op: Operator,
         left: Expr,
         right: Expr
     )(using override val info: Info)
-        extends Expr(info)
+        extends Expr
+
     case class Ascribe(
         expr: Expr,
         tpe: Type
     )(using override val info: Info)
-        extends Expr(info)
+        extends Expr
 
     case class Apply(
         fn: Expr,
-        arg: Expr
+        arg: Expr | Type
     )(using override val info: Info)
-        extends Expr(info)
+        extends Expr
 
     case class Fn(
-        params: Seq[Pattern],
+        params: Seq[Param],
         body: Expr
     )(using override val info: Info)
-        extends Expr(info)
+        extends Expr
 
     case class Let(
         defs: Seq[Decl],
         body: Expr
     )(using override val info: Info)
-        extends Expr(info)
-
-    case class For(
-        init: Pattern,
-        start: Expr,
-        finish: Expr,
-        body: Expr
-    )(using override val info: Info)
-        extends Expr(info)
-
-    case class While(
-        cond: Expr,
-        body: Expr
-    )(using override val info: Info)
-        extends Expr(info)
+        extends Expr
 
     case class If(
         cond: Expr,
         thenp: Expr,
         elsep: Expr
     )(using override val info: Info)
-        extends Expr(info)
+        extends Expr
 
-    case class Tuple(elems: Seq[Expr])(using override val info: Info)
-        extends Expr(info)
+    case class Constr(
+        name: Name,
+        typeArgs: Seq[Type],
+        args: Seq[Expr]
+    )(using override val info: Info)
+        extends Expr
 
     case class Case(
         scrutnee: Expr,
         cases: Seq[MatchArm]
     )(using override val info: Info)
-        extends Expr(info)
+        extends Expr
   }
-}
 
-trait AbstractPattern extends Tree, AbstractValue {
-  this: AbstractType & AbstractExpr & AbstractDecl =>
-  sealed trait Pattern { def info: Info }
-
-  object Pattern {
-    export Value.*
-
-    case class Wildcard(
-    )(using override val info: Info)
-        extends Pattern
-
-    case class Tuple(
-        elems: Seq[Pattern]
-    )(using val info: Info)
-        extends Pattern
-
-    case class Alias(
-        pat: Pattern,
-        alias: Name
-    )(using override val info: Info)
-        extends Pattern
-
-    case class Ascribe(
-        pat: Pattern,
-        tpe: Type
-    )(using override val info: Info)
-        extends Pattern
-
-    case class Constructor(
-        name: Name,
-        args: Seq[Pattern]
-    )(using override val info: Info)
-        extends Pattern
-  }
-}
-
-trait AbstractValue extends Tree {
-  self: AbstractExpr & AbstractType & AbstractPattern & AbstractDecl =>
-
-  sealed abstract class Value(override val info: Info)
-      extends Expr(info),
-        Pattern
-
-  object Value {
-    case class Unit()(using override val info: Info) extends Value(info)
-    case class True()(using override val info: Info) extends Value(info)
-    case class False()(using override val info: Info) extends Value(info)
-    case class Var(name: Name)(using override val info: Info)
-        extends Value(info)
-    case class Int(value: scala.Int)(using override val info: Info)
-        extends Value(info)
-    case class Chr(value: scala.Char)(using override val info: Info)
-        extends Value(info)
-    case class String(value: Predef.String)(using override val info: Info)
-        extends Value(info)
-  }
-}
-
-trait AbstractDecl extends Tree {
-  this: AbstractExpr & AbstractType & AbstractPattern =>
-
-  sealed abstract class Decl(val info: Info)
-  object Decl {
-    case class TypeAlias(name: Name, typeParams: Seq[Name], tpe: Type)(using
-        override val info: Info
-    ) extends Decl(info)
-
-    case class TypeDef(
-        name: Name,
-        params: Seq[Name],
-        constructors: Seq[(Name, Seq[Name])]
-    )(using override val info: Info)
-        extends Decl(info)
-
-    case class Val(
-        pattern: Pattern,
-        body: Expr
-    )(using override val info: Info)
-        extends Decl(info)
-
-    case class Fun(
-        name: Name,
-        typeParams: Seq[Name],
-        params: Seq[Pattern],
-        ret: Type,
-        body: Expr
-    )(using override val info: Info)
-        extends Decl(info)
-
-    case class Mutual(decls: Seq[Decl])(using override val info: Info)
-        extends Decl(info)
-  }
-}
-
-trait AbstractType extends Tree {
-  sealed abstract class Type { def info: Info }
-  sealed abstract class Primitive(override val info: Info) extends Type
-  object Type {
-    case class Unit()(using override val info: Info) extends Primitive(info)
-    case class Bool()(using override val info: Info) extends Primitive(info)
-    case class String()(using override val info: Info) extends Primitive(info)
-    case class Integer()(using override val info: Info) extends Primitive(info)
-    case class Var(in: Name)(using override val info: Info) extends Type
-    case class Array(elem: Type)(using override val info: Info)
-        extends Primitive(info)
-    case class Fn(in: Type, out: Type)(using override val info: Info)
-        extends Type
-    case class Named(tycon: Name)(using override val info: Info) extends Type
-    case class App(tyCon: Type, args: Seq[Type])(using override val info: Info)
-        extends Type
-    case class Tuple(tpes: Seq[Type])(using override val info: Info)
-        extends Type
-  }
-}
-
-trait AbstractModule
-    extends Tree,
-      AbstractDecl,
-      AbstractExpr,
-      AbstractType,
-      AbstractPattern {
   case class Module(name: Seq[Name], decls: Seq[Decl])
 }
 

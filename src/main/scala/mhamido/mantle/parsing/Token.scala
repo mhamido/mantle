@@ -20,6 +20,10 @@ object Token:
   given JsonValueCodec[Token] = JsonCodecMaker.make
   given JsonValueCodec[Seq[Token]] = JsonCodecMaker.make
 
+  extension [A](f: PartialFunction[Kind, A]) {
+    def domain: Seq[Kind] = Kind.All.filter(f.isDefinedAt(_))
+  }
+
   enum Kind extends Enum[Kind]:
     case Eof, Unknown
 
@@ -38,7 +42,7 @@ object Token:
     case If, Then, Else, As, Fn
     case Case, Of
 
-    case Dot, Semi, Colon, Comma
+    case Dot, Semi, Colon, Comma, Bar
     case ThinArrow, ThickArrow, LeftArrow
 
     case OpenParen, CloseParen
@@ -66,6 +70,7 @@ object Token:
       case Char             => "<char>"
       case Int              => "<int>"
       case Eql              => "="
+      case Bar              => "|"
       case NotEql           => "/="
       case Not              => "not"
       case LogicalAnd       => "&&"
@@ -117,4 +122,5 @@ object Token:
       case OpenBrace        => "{"
       case CloseBrace       => "}"
   object Kind:
+    final val All = Kind.values.toSeq
     given codec: JsonValueCodec[Kind] = JsonCodecMaker.make
