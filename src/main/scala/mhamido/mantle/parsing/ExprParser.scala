@@ -14,10 +14,12 @@ trait ExprParser extends Parser {
       val rhs = expr(ExprParser.HighestPrec)
       Expr.Not(rhs)(using token.pos <> rhs.info)
     }
+
     case Token.Sub => { token =>
       val rhs = expr(ExprParser.HighestPrec)
       Expr.Negate(rhs)(using token.pos <> rhs.info)
     }
+
     case Token.If => { token =>
       val cond = expr()
       consume(Token.Then)
@@ -26,19 +28,21 @@ trait ExprParser extends Parser {
       val elsep = expr()
       Expr.If(cond, thenp, elsep)(using token.pos <> elsep.info)
     }
-    
+
     case Token.Let => { token =>
       val defs = decls(Token.In)
       consume(Token.In)
       val body = expr()
       Expr.Let(defs, body)(using token.pos <> pos)
     }
+
     case Token.Fn => { token =>
-      val params = patterns(Token.ThickArrow)
+      val paramList = params()
       consume(Token.ThickArrow)
       val body = expr()
-      Expr.Fn(params, body)(using token.pos <> pos)
+      Expr.Fn(paramList, body)(using token.pos <> pos)
     }
+
     case Token.Case => { token =>
       val scrutnee = expr() // condExpr(Token.With)
       consume(Token.Of)
@@ -58,6 +62,8 @@ trait ExprParser extends Parser {
     }
   }
 
+  def param(): Param = ???
+
   private val leftAssoc: Infix = (lhs, op) => {
     Expr.Bin(Operator(op.kind), lhs, expr(precedence(op.kind)))(using lhs.info)
   }
@@ -74,7 +80,8 @@ trait ExprParser extends Parser {
         Expr.True()(using token.pos <> pos)
       else if (token.literal == "false")
         Expr.False()(using token.pos <> pos)
-      else Expr.Var(token.literal)(using token.pos <> pos)
+      else
+        Expr.Var(token.literal)(using token.pos <> pos)
 
     case Token.UpperName =>
       Expr.Var(token.literal)(using token.pos <> pos)

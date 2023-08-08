@@ -8,26 +8,40 @@ abstract class Parser(using val reporter: Reporter) {
   export mhamido.mantle.syntax.*
 
   def tokens: BufferedIterator[Token]
-
   def pos: Position = peek.pos
 
-  def peek: Token = tokens.head
+  def peek: Token      = tokens.head
   def advance(): Token = tokens.next()
 
   def isAtEnd: Boolean = !tokens.hasNext || (peek is Token.Eof)
   def matches(kinds: Token.Kind*): Boolean = kinds exists (peek is _)
 
+  final inline def between[A](
+      open: Token.Kind,
+      sep: Token.Kind,
+      close: Token.Kind
+  )(elem: () => A): (Token, Seq[A], Token) = {
+    def loop(): List[A] = expect {
+      case kind if kind == close => Nil
+      case kind if kind == sep =>
+        val _ = advance()
+        elem() :: loop()
+    }
+
+    val opened = consume(open).get
+    val elems  = elem() :: loop()
+    val closed = consume(close).get
+    (opened, elems, closed)
+  }
+
   def consume(kinds: Token.Kind*): Option[Token] =
     if matches(kinds*) then Some(advance())
-    else {
+    else
       reporter.error(
         Parser.Unexpected(kinds, tokens.headOption),
         peek.pos
       )
-
       None
-    }
-    // Option.when(matches(kind))(advance())
 
   def peek[A](pf: Token ?=> Token.Kind => A): A =
     pf(using peek)(peek.kind)
@@ -63,7 +77,9 @@ object Parser {
       got: Option[Token]
   ) extends Error {
     override def getMessage(): String =
-      val actual = got.map(tok => s"Unexpected token ${tok.render} at line: ${tok.pos.line} col: ${tok.pos.column} ")
+      val actual = got.map(tok =>
+        s"Unexpected token ${tok.render} at line: ${tok.pos.line} col: ${tok.pos.column} "
+      )
       val expected =
         s"Expected any of the following tokens: ${expecting map (r => s"'${r.render}'") mkString ","}."
       actual.fold(expected)(_ + expected)

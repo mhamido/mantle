@@ -10,10 +10,14 @@ fun iterFactorial (n: Int): Int =
             else loop (n - 1) (acc * n)
     in loop n 1
 
-fun main () = 
-    for i <- 0 to 15 do
-        let val () = println "==<>=="
+fun main (): Unit =
+    let fun loop (i: Int): Unit = 
+        if i > 15 then ()
+        else let 
+            val () = println "==<>=="
             val () = println i
             val () = println (recFactorial i)
             val () = println (iterFactorial i)
-        in  println "==<>=="
+            val () = println "==<>==" 
+        in loop (i + 1)
+    in loop 0

@@ -3,64 +3,71 @@ package mhamido.mantle.parsing
 import mhamido.mantle.syntax
 import mhamido.mantle.util.Position
 
-// TODO: fix up the syntax
-
 trait TypeParser extends Parser {
-  def tpe(tokens: Seq[Token.Kind] = Seq.empty): Type = {
-    val base = typeApplication()
-    peek {
-      case Token.ThinArrow =>
-        val arrow = advance()
-        val ret = tpe()
-        Type.Fn(base, ret)(using base.info <> ret.info)
-      case _ => base
-    }
-  }
-
-  private def typeApplication(): Type = {
-    ???
-    // val fn = peek(prim)
-    // val argsBuilder = List.newBuilder[Type]
-    // while !isAtEnd && matches(primStarts*) do argsBuilder += peek(prim)
-    // argsBuilder.result() match {
-    //   case Nil => fn
-    //   case xs  => Type.Constr(fn, xs)(using fn.info <> pos)
-    // }
-  }
-
-  val primStarts: Seq[Token.Kind] =
-    Seq(Token.OpenParen, Token.LowerName, Token.UpperName)
-
-  val prim: PartialFunction[Token.Kind, Type] = {
-    case Token.OpenParen =>
-      val openParen = advance()
-      peek {
-        case Token.CloseParen =>
-          val closeParen = advance()
-          // Type.Unit()(using openParen.pos <> closeParen.pos)
-          ???
-
-        case _ =>
-          val elems = List.newBuilder[Type]
-          elems += tpe()
-          while !isAtEnd && matches(Token.Comma) do
-            consume(Token.Comma)
-            elems += tpe()
-          consume(Token.CloseParen)
-
-          elems.result() match
-            case List(x) => x
-            case xs      => Type.Tuple(xs)(using xs.head.info <> xs.last.info)
+  def tpe(): Type = peek {
+    case Token.OpenBracket =>
+      val openBracket = consume(Token.OpenBracket).get
+      expect { case Token.PrimedName =>
+        val name = summon[Token].literal
+        consume(Token.CloseBracket)
+        consume(Token.ThinArrow)
+        val body = tpe()
+        Type.TypeFn(name, body)(using openBracket.pos <> body.info)
       }
 
-    case Token.LowerName =>
-      val name = advance()
-      Type.Var(name.literal)(using name.pos <> pos)
-
-    case Token.UpperName =>
-      val name = advance()
-      Type.Named(name.literal)(using name.pos <> pos)
+    case _ =>
+      val fromType = primType()
+      peek {
+        case Token.ThinArrow =>
+          val arrow  = advance()
+          val toType = tpe()
+          Type.Fn(fromType, toType)(using fromType.info <> toType.info)
+        case _ => fromType
+      }
   }
+
+  private def primType(): Type = peek {
+    case Token.OpenParen =>
+      val (openParen, types, closeParen) =
+        between(Token.OpenParen, Token.Comma, Token.CloseParen)(tpe)
+      Type.Tuple(types)(using ???)
+    case _ => namedType()
+  }
+
+  private def namedType(): Type = expect {
+    case Token.PrimedName =>
+      val token = summon[Token]
+      Type.Var(token.literal)(using token.pos <> pos)
+
+    case Token.UpperName | Token.LowerName =>
+      val token = summon[Token]
+      TypeParser.primOrNamedType(token.literal)(using token.pos <> pos)
+  }
+
+  private def parameterizedType(): Type = {
+    def loop(head: Type): Type = peek {
+      case Token.OpenBracket =>
+        // loop(Type.Apply(head, paramList()))
+        ???
+      case _ => head
+    }
+    loop(primType())
+  }
+
+  private def paramList() =
+    between(Token.OpenBracket, Token.Comma, Token.CloseBracket)(tpe)
+
 }
 
-object TypeParser {}
+object TypeParser {
+  import syntax.{Type, Info}
+
+  def primOrNamedType(name: String)(using Info) = name match {
+    case "Int"    => Type.Int()
+    case "Unit"   => Type.Unit()
+    case "String" => Type.String()
+    case "Array"  => Type.Array()
+    case "Bool"   => Type.Bool()
+    case _        => Type.Named(name)
+  }
+}

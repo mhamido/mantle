@@ -10,5 +10,4 @@ fun fib (n: Int): Int =
             else loop (n - 1) curr (prev + curr)
     in loop n 0 1
 
-fun main () =
-    () /* TODO stuff */
+fun main (): Unit = () /* TODO stuff */

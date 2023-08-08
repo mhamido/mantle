@@ -2,85 +2,110 @@ package mhamido.mantle.parsing
 
 trait DeclParser extends Parser {
   self: ExprParser & TypeParser & PatternParser =>
+
   def decl(terminators: Token.Kind*): Decl = expect {
     case Token.Fun =>
-      val fun = summon[Token].pos
-      val name = consume(Token.LowerName).get
-      val typarams = typeParams()
-      val params = patterns(Token.Colon, Token.Eql)
-      // val params = Seq()
-      val returnType = peek {
-        case Token.Colon =>
-          val colon = advance()
-          val ret = tpe(Token.Eql +: terminators)
-          ret
-        case _ => Type.Unit()(using pos <> pos)
-      }
-      consume(Token.Eql)
-      val body = expr()
-      Decl.Fun(name.literal, typarams, params, returnType, body)(using fun <> body.info)
+      val fun   = summon[Token]
+      val group = funClause(fun) :: andClauses()
+      Decl.FunGroup(group)(using fun.pos <> pos)
 
     case Token.Val =>
-      val token = summon[Token]
-      val patt = pattern(Token.Eql)
+      val vl     = summon[Token]
+      val binder = basicPattern()
+      val explicitType = peek {
+        case Token.Colon =>
+          val colon = advance()
+          Some(tpe())
+        case _ => None
+      }
       consume(Token.Eql)
       val body = expr()
-      Decl.Val(patt, body)(using token.pos <> body.info)
+      Decl.Val(binder, explicitType, body)(using vl.pos <> pos)
 
     case Token.Type =>
-      val start = summon[Token].pos
-      val name = consume(Token.UpperName).get.literal
-      val params = typeParams()
+      val start          = summon[Token]
+      val name           = consume(Token.UpperName).get.literal
+      val (_, params, _) = uncurriedTypeParams()
       consume(Token.Eql)
-      val ty = tpe(DeclParser.Start)
-      Decl.Alias(name, params, ty)(using start <> ty.info)
+      val body = tpe()
+      Decl.Alias(name, params, body)(using start.pos <> pos)
 
     case Token.DataType =>
-      val start = summon[Token].pos
-      val name = consume(Token.UpperName).get.literal
-      val tpe = typeParams()
+      val start          = summon[Token]
+      val name           = consume(Token.UpperName).get.literal
+      val (_, params, _) = uncurriedTypeParams()
       consume(Token.Eql)
-      val body: Seq[(Name, Seq[Type])] = {
-        ???
-      }
-    
-      Decl.Data(name, tpe, body)(using start <> pos)
       ???
   }
 
-  def decls(terminator: Token.Kind): Seq[Decl] =
-    val defs = List.newBuilder[Decl]
-    while !isAtEnd && !matches(terminator) do defs += decl()
-    defs.result()
-
-  def typeParams(): Seq[Name] = peek {
-    case Token.OpenBracket =>
-      advance()
-      val params = List.newBuilder[Name]
-      consume(Token.LowerName).foreach(params += _.literal)
-
-      while !isAtEnd && matches(Token.Comma) do
-        consume(Token.Comma)
-        consume(Token.LowerName).foreach(params += _.literal)
-
-      consume(Token.CloseBracket)
-      params.result()
-    case _ => Seq.empty
+  def decls(terminators: Token.Kind*): List[Decl] = peek {
+    case end if terminators contains end => Nil
+    case declStart if DeclParser.Start contains declStart =>
+      decl(terminators*) :: decls(terminators*)
   }
 
-  def fun(): Decl.Fun = {
-    
+  private def funClause(start: Token): Decl.Fun = expect {
+    case Token.LowerName =>
+      val name = summon[Token].literal
+      val paramList = params()
+      consume(Token.Colon)
+      val retType = tpe()
+      consume(Token.Eql)
+      val body = expr()
+      Decl.Fun(name, paramList, retType, body)(using
+        start.pos <> body.info
+      )
   }
 
-  
-  def data(): Decl.Data = ???
+  private def andClauses(): List[Decl.Fun] = peek {
+    case Token.And =>
+      val andToken = advance()
+      val clause   = funClause(andToken)
+      clause :: andClauses()
+    case _ =>
+      Nil
+  }
+
+  def params(): Seq[Param] = {
+    def param(): Param = expect {
+      case Token.OpenBracket =>
+        val name = consume(Token.PrimedName).get
+        consume(Token.CloseBracket)
+        Param.Type(name.literal)(using name.pos <> pos)
+      case Token.OpenParen =>
+        val openParen = summon[Token]
+        expect {
+          case Token.LowerName =>
+            val name = consume(Token.LowerName).get
+            consume(Token.Colon)
+            val annotatedType = tpe()
+            consume(Token.CloseParen)
+            Param.Value(name.literal, annotatedType)(using name.pos <> pos)
+          case Token.CloseParen =>
+            val pos = openParen.pos <> this.pos
+            Param.Value("Unit", Type.Unit()(using pos))(using pos)
+        }
+
+    }
+
+    def loop(): List[Param] =
+      peek {
+        case Token.OpenBracket | Token.OpenParen => param() :: loop()
+        case _                                   => Nil
+      }
+
+    param() :: loop()
+  }
+  private def uncurriedTypeParams() =
+    between(Token.OpenBracket, Token.Comma, Token.CloseBracket) { () =>
+      consume(Token.PrimedName).get.literal
+    }
 }
 
 object DeclParser {
   val Start: Seq[Token.Kind] = Seq(
     Token.Fun,
     Token.Val,
-    Token.Mutual,
     Token.Type,
     Token.DataType
   )

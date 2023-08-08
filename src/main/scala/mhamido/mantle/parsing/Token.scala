@@ -27,7 +27,7 @@ object Token:
   enum Kind extends Enum[Kind]:
     case Eof, Unknown
 
-    case LowerName, UpperName, OperatorName
+    case LowerName, UpperName, OperatorName, PrimedName
     case String, Char, Int
 
     case Eql, NotEql
@@ -35,7 +35,7 @@ object Token:
     case Add, Sub, Mul, Div
     case LessThan, GreaterThan, LessThanOrEql, GreaterThanOrEql
 
-    case Let, Fun, Val, In
+    case Let, Fun, And, Val, In
     case Type, DataType, Mutual
     case Module, Import, With, Interface, Instance
     case For, While, DownTo, To, Do, Mut
@@ -65,6 +65,7 @@ object Token:
       case Unknown          => "<unknown>"
       case LowerName        => "<varname>"
       case UpperName        => "<conname>"
+      case PrimedName       => "<primedname>"
       case OperatorName     => "<opname>"
       case String           => "<string>"
       case Char             => "<char>"
@@ -121,6 +122,7 @@ object Token:
       case CloseBracket     => "]"
       case OpenBrace        => "{"
       case CloseBrace       => "}"
+      case And              => "and"
   object Kind:
     final val All = Kind.values.toSeq
     given codec: JsonValueCodec[Kind] = JsonCodecMaker.make

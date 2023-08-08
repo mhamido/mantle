@@ -16,10 +16,10 @@ final class Lexer(
     src: BufferedIterator[Char]
 )(using reporter: Reporter)
     extends Iterable[Token]:
-  private[this] var line = 1
+  private[this] var line   = 1
   private[this] var column = 1
 
-  val tokens: LazyList[Token] = mkTokens()
+  val tokens: LazyList[Token]   = mkTokens()
   def iterator: Iterator[Token] = tokens.iterator
 
   inline private def pos = Position.InFile(line, column, path)
@@ -49,25 +49,18 @@ final class Lexer(
     else
       advance() match
         case w if w.isWhitespace => mkTokens()
-        case '(' => Token(Token.OpenParen, "(", pos) #:: mkTokens()
-        case ')' => Token(Token.CloseParen, ")", pos) #:: mkTokens()
-        case '[' => Token(Token.OpenBracket, "[", pos) #:: mkTokens()
-        case ']' => Token(Token.CloseBracket, "]", pos) #:: mkTokens()
-        case '{' => Token(Token.OpenBrace, "{", pos) #:: mkTokens()
-        case '}' => Token(Token.CloseBrace, "}", pos) #:: mkTokens()
-        case ':' => Token(Token.Colon, ":", pos) #:: mkTokens()
-        case '.' => Token(Token.Dot, ":", pos) #:: mkTokens()
-        case ';' => Token(Token.Semi, ";", pos) #:: mkTokens()
-        case ',' => Token(Token.Comma, ",", pos) #:: mkTokens()
-        case '"' => finishString() #:: mkTokens()
-        // case '\'' =>
-        //   val token @ Token(_, contents, pos) = finishString()
-        //   val result = if peek('\'') then
-        //     if contents.length != 1 then lexicalError(Lexer.LongCharLiteral(contents, pos))
-        //     token.copy(kind = Token.Char)
-        //   else
-        //     token.copy(kind = Token.LowerName)
-        //   result #:: mkTokens()
+        case '('  => Token(Token.OpenParen, "(", pos) #:: mkTokens()
+        case ')'  => Token(Token.CloseParen, ")", pos) #:: mkTokens()
+        case '['  => Token(Token.OpenBracket, "[", pos) #:: mkTokens()
+        case ']'  => Token(Token.CloseBracket, "]", pos) #:: mkTokens()
+        case '{'  => Token(Token.OpenBrace, "{", pos) #:: mkTokens()
+        case '}'  => Token(Token.CloseBrace, "}", pos) #:: mkTokens()
+        case ':'  => Token(Token.Colon, ":", pos) #:: mkTokens()
+        case '.'  => Token(Token.Dot, ":", pos) #:: mkTokens()
+        case ';'  => Token(Token.Semi, ";", pos) #:: mkTokens()
+        case ','  => Token(Token.Comma, ",", pos) #:: mkTokens()
+        case '"'  => finishString() #:: mkTokens()
+        case '\'' => finishCharOrPrime() #:: mkTokens()
         case '<' if peek('-') =>
           Token(Token.LeftArrow, "<-", pos) #:: mkTokens()
         case '<' if peek('=') =>
@@ -90,7 +83,8 @@ final class Lexer(
         case '-' => Token(Token.Sub, "-", pos) #:: mkTokens()
         case '*' => Token(Token.Mul, "*", pos) #:: mkTokens()
 
-        case v if v.isLetter || v == '_' => finishIdentifier(v) #:: mkTokens()
+        case v if v.isLetter || v == '_' =>
+          finishIdentifierOrKeyword(v) #:: mkTokens()
         // case '0' if peek('b')            => ???
         // case '0' if peek('x')            => ???
         case d if d.isDigit => finishNumber(d) #:: mkTokens()
@@ -103,7 +97,7 @@ final class Lexer(
     reporter.error(err)
 
   private def finishComments(): Unit =
-    var done = false
+    var done     = false
     val startPos = pos.copy(column = column - 2)
 
     while !done && src.hasNext do
@@ -115,7 +109,7 @@ final class Lexer(
 
   private def finishNumber(start: Char): Token =
     val startPos = pos.copy(column = column - 1)
-    val builder = mutable.StringBuilder()
+    val builder  = mutable.StringBuilder()
     builder += start
 
     while src.hasNext && (src.head.isDigit || src.head == '_') do
@@ -134,7 +128,7 @@ final class Lexer(
 
   private def finishString(terminator: Char = '"'): Token =
     val startPos = pos.copy(column = column - 1)
-    val builder = mutable.StringBuilder()
+    val builder  = mutable.StringBuilder()
 
     while src.hasNext && src.head != terminator do
       // TODO: Handle escape sequences
@@ -144,14 +138,25 @@ final class Lexer(
     if !peek(terminator) then lexicalError(Lexer.Unclosed("String", startPos))
     Token(Token.String, builder.toString, startPos)
 
-  private def finishIdentifier(start: Char): Token =
-    val startPos = pos.copy(column = column - 1)
-    val builder = mutable.StringBuilder()
-    builder += start
-    while src.hasNext && (src.head.isLetterOrDigit || src.head == '_') do
-      builder += advance()
-    val identifier = builder.toString
+  private def finishCharOrPrime(): Token =
+    val startPos = pos.copy(column = column + 1)
+    src.next() match
+      // case '\\' => finishEscapeSequence() // TODO: escape sequence
 
+      case c if c.isLetter && peek('\'') =>
+        src.next()
+        Token(Token.Char, c.toString, startPos)
+
+      case c if c.isLetter =>
+        val (_, identifier) = finishIdentifier(c)
+        Token(Token.PrimedName, identifier, startPos)
+
+      case c =>
+        if !peek('\'') then lexicalError(Lexer.Unclosed("Character", startPos))
+        Token(Token.Char, c.toString, startPos)
+
+  private def finishIdentifierOrKeyword(start: Char): Token =
+    val (startPos, identifier) = finishIdentifier(start)
     Lexer.Keywords
       .get(identifier)
       .map(Token(_, identifier, startPos))
@@ -161,10 +166,18 @@ final class Lexer(
         Token(kind, identifier, startPos)
       }
 
+  private inline def finishIdentifier(start: Char): (Position, String) =
+    val startPos = pos.copy(column = column - 1)
+    val builder  = mutable.StringBuilder()
+    builder += start
+    while src.hasNext && (src.head.isLetterOrDigit || src.head == '_') do
+      builder += advance()
+    (startPos, builder.toString)
+
 object Lexer:
   def apply(in: Path)(using reporter: Reporter): BufferedIterator[Token] =
     val charstream = os.read(in, Codec.UTF8)
-    val lexer = new Lexer(in, charstream.iterator.buffered)(using reporter)
+    val lexer      = new Lexer(in, charstream.iterator.buffered)(using reporter)
 
     // if ctx.dumpTokens then
     //   for token <- lexer.tokens.iterator do
@@ -177,37 +190,38 @@ object Lexer:
 
   sealed abstract class Error
   case class Unknown(char: Char, pos: Position) extends Error
-  case class Unclosed(tpe: "Comment" | "String", pos: Position) extends Error
-  case class LongCharLiteral(literal: String, pos: Position) extends Error
+  case class Unclosed(tpe: "Comment" | "String" | "Character", pos: Position)
+      extends Error
+  case class LongCharLiteral(literal: String, pos: Position)   extends Error
   case class InvalidIntLiteral(literal: String, pos: Position) extends Error
 
   final val Keywords = Map(
-    "as" -> Token.As,
-    "and" -> Token.LogicalAnd,
-    "or" -> Token.LogicalOr,
-    "datatype" -> Token.DataType,
-    "do" -> Token.Do,
-    "downto" -> Token.DownTo,
-    "else" -> Token.Else,
-    "fn" -> Token.Fn,
-    "for" -> Token.For,
-    "fun" -> Token.Fun,
-    "if" -> Token.If,
-    "import" -> Token.Import,
-    "in" -> Token.In,
-    "instance" -> Token.Instance,
+    "as"        -> Token.As,
+    "and"       -> Token.LogicalAnd,
+    "or"        -> Token.LogicalOr,
+    "datatype"  -> Token.DataType,
+    "do"        -> Token.Do,
+    "downto"    -> Token.DownTo,
+    "else"      -> Token.Else,
+    "fn"        -> Token.Fn,
+    "for"       -> Token.For,
+    "fun"       -> Token.Fun,
+    "if"        -> Token.If,
+    "import"    -> Token.Import,
+    "in"        -> Token.In,
+    "instance"  -> Token.Instance,
     "interface" -> Token.Interface,
-    "let" -> Token.Let,
-    "case" -> Token.Case,
-    "module" -> Token.Module,
-    "mut" -> Token.Mut,
-    "mutual" -> Token.Mutual,
-    "not" -> Token.Not,
-    "then" -> Token.Then,
-    "to" -> Token.To,
-    "type" -> Token.Type,
-    "val" -> Token.Val,
-    "while" -> Token.While,
-    "of" -> Token.Of,
-    "with" -> Token.With
+    "let"       -> Token.Let,
+    "case"      -> Token.Case,
+    "module"    -> Token.Module,
+    "mut"       -> Token.Mut,
+    "and"       -> Token.And,
+    "not"       -> Token.Not,
+    "then"      -> Token.Then,
+    "to"        -> Token.To,
+    "type"      -> Token.Type,
+    "val"       -> Token.Val,
+    "while"     -> Token.While,
+    "of"        -> Token.Of,
+    "with"      -> Token.With
   )

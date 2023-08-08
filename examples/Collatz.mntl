@@ -7,6 +7,6 @@ fun collatz (n: Int): Int =
     else if mod m 2 = 0 then 1 + collatz (n / 2)
     else 1 + collatz (3 * n + 1)
 
-fun main () =
+fun main (): Unit =
     let val () = println "The hailstone length of 63728127 is: " in
     println (collatz 63728127)

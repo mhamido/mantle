@@ -18,7 +18,6 @@ lazy val root = project
       "com.lihaoyi" %% "mainargs" % "0.3.0",
       "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-core" % "2.20.1",
       "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-macros" % "2.20.1",
-      "org.scala-lang.modules" %% "scala-parser-combinators" % "2.2.0"
     )
   )
 
