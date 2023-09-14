@@ -1,112 +1,94 @@
 package mhamido.mantle.parsing
 
-trait DeclParser extends Parser {
-  self: ExprParser & TypeParser & PatternParser =>
+import mhamido.mantle.util.Span
+import org.parboiled2.*
+import scala.language.implicitConversions
+import mhamido.mantle.util.Phase
+import mhamido.mantle.util.Context
+import os.Path
+import Parser.DeliveryScheme.Either
 
-  def decl(terminators: Token.Kind*): Decl = expect {
-    case Token.Fun =>
-      val fun   = summon[Token]
-      val group = funClause(fun) :: andClauses()
-      Decl.FunGroup(group)(using fun.pos <> pos)
+trait DeclParser extends BaseParser:
+  self: ExprParser & PatternParser & TypeParser =>
 
-    case Token.Val =>
-      val vl     = summon[Token]
-      val binder = basicPattern()
-      val explicitType = peek {
-        case Token.Colon =>
-          val colon = advance()
-          Some(tpe())
-        case _ => None
-      }
-      consume(Token.Eql)
-      val body = expr()
-      Decl.Val(binder, explicitType, body)(using vl.pos <> pos)
+  def Decl: Rule1[syntax.Decl] = rule:
+    FunDecl | ValDecl | TypeDecl | DataDecl
 
-    case Token.Type =>
-      val start          = summon[Token]
-      val name           = consume(Token.UpperName).get.literal
-      val (_, params, _) = uncurriedTypeParams()
-      consume(Token.Eql)
-      val body = tpe()
-      Decl.Alias(name, params, body)(using start.pos <> pos)
-
-    case Token.DataType =>
-      val start          = summon[Token]
-      val name           = consume(Token.UpperName).get.literal
-      val (_, params, _) = uncurriedTypeParams()
-      consume(Token.Eql)
-      ???
-  }
-
-  def decls(terminators: Token.Kind*): List[Decl] = peek {
-    case end if terminators contains end => Nil
-    case declStart if DeclParser.Start contains declStart =>
-      decl(terminators*) :: decls(terminators*)
-  }
-
-  private def funClause(start: Token): Decl.Fun = expect {
-    case Token.LowerName =>
-      val name = summon[Token].literal
-      val paramList = params()
-      consume(Token.Colon)
-      val retType = tpe()
-      consume(Token.Eql)
-      val body = expr()
-      Decl.Fun(name, paramList, retType, body)(using
-        start.pos <> body.info
-      )
-  }
-
-  private def andClauses(): List[Decl.Fun] = peek {
-    case Token.And =>
-      val andToken = advance()
-      val clause   = funClause(andToken)
-      clause :: andClauses()
-    case _ =>
-      Nil
-  }
-
-  def params(): Seq[Param] = {
-    def param(): Param = expect {
-      case Token.OpenBracket =>
-        val name = consume(Token.PrimedName).get
-        consume(Token.CloseBracket)
-        Param.Type(name.literal)(using name.pos <> pos)
-      case Token.OpenParen =>
-        val openParen = summon[Token]
-        expect {
-          case Token.LowerName =>
-            val name = consume(Token.LowerName).get
-            consume(Token.Colon)
-            val annotatedType = tpe()
-            consume(Token.CloseParen)
-            Param.Value(name.literal, annotatedType)(using name.pos <> pos)
-          case Token.CloseParen =>
-            val pos = openParen.pos <> this.pos
-            Param.Value("Unit", Type.Unit()(using pos))(using pos)
-        }
-
-    }
-
-    def loop(): List[Param] =
-      peek {
-        case Token.OpenBracket | Token.OpenParen => param() :: loop()
-        case _                                   => Nil
+  def Param: Rule1[syntax.Param] =
+    def unitParam: Rule1[syntax.Param] = rule:
+      push(cursor) ~ "(" ~ ")" ~ push(cursor) ~> { (start, end) =>
+        given Span = Span(start, end)
+        syntax.Param.Value("_", syntax.Type.Unit())
       }
 
-    param() :: loop()
-  }
-  private def uncurriedTypeParams() =
-    between(Token.OpenBracket, Token.Comma, Token.CloseBracket) { () =>
-      consume(Token.PrimedName).get.literal
-    }
-}
+    def typeParam: Rule1[syntax.Param] = rule:
+      push(cursor) ~ "[" ~ PrimedName ~ "]" ~> { (start, name) =>
+        syntax.Param.Type(name)(using Span(start, cursor))
+      }
 
-object DeclParser {
-  val Start: Seq[Token.Kind] = Seq(
-    Token.Fun,
-    Token.Val,
-    Token.Type,
-    Token.DataType
-  )
-}
+    def valParam: Rule1[syntax.Param] = rule:
+      push(cursor) ~ "(" ~ LowerName ~ ":" ~ Type ~ ")" ~> {
+        (start, name, tpe) =>
+          syntax.Param.Value(name, tpe)(using Span(start, cursor))
+      }
+
+    rule(typeParam | unitParam | valParam)
+
+  def FunDecl: Rule1[syntax.Decl] =
+    def clause: Rule1[syntax.Decl.Fun] = rule:
+      push(cursor) ~ LowerName ~ Param.+ ~ ":" ~ Type ~ "=" ~ Expr ~> {
+        (start, name, params, ret, body) =>
+          syntax.Decl.Fun(name, params, ret, body)(using Span(start, cursor))
+      }
+    rule:
+      push(cursor) ~ "fun" ~!~ (clause + "and") ~> { (start, clauses) =>
+        syntax.Decl.FunGroup(clauses)(using Span(start, cursor))
+      }
+
+  def ValDecl: Rule1[syntax.Decl] = rule:
+    push(cursor) ~ "val" ~!~ Pattern ~ "=" ~ Expr ~> { (start, pattern, body) =>
+      given Span = Span(start, cursor)
+      syntax.Decl.Val(pattern, body)
+    }
+
+  def TypeParams: Rule1[Seq[String]] = rule:
+    ("[" ~ (PrimedName + ",") ~ "]").? ~> { _.getOrElse(Seq.empty) }
+
+  def TypeDecl: Rule1[syntax.Decl] = rule:
+    push(cursor) ~ "type" ~!~ UpperName ~ TypeParams.? ~ "=" ~ Type ~> {
+      (start, name, typeParams, tpe) =>
+        syntax.Decl.Alias(name, typeParams.getOrElse(Seq.empty), tpe)(using
+          Span(start, cursor)
+        )
+    }
+
+  // TODO: Adopt OCaml style aliasing, otherwise
+  // there wouldn't be a way to specify a mutually recursive alias + datatype
+  def DataDecl: Rule1[syntax.Decl] =
+    def constructor: Rule1[(String, Seq[syntax.Type])] = rule:
+      UpperName ~ PrimType.? ~> { (name, tpe) =>
+        (
+          name,
+          tpe.fold(Seq.empty) {
+            case syntax.Type.Tuple(types) => types
+            case xs                       => Seq(xs)
+          }
+        )
+      }
+
+    def data = rule:
+      push(
+        cursor
+      ) ~ UpperName ~ TypeParams.? ~ ("=" ~ "|".? ~ (constructor + "|")).? ~> {
+        (start, name, params, ctors) =>
+          val typeParams   = params.getOrElse(Seq.empty)
+          val constructors = ctors.getOrElse(Seq.empty)
+          syntax.Decl.Data(name, typeParams, constructors)(using
+            Span(start, cursor)
+          )
+      }
+
+    rule:
+      push(cursor) ~ "datatype" ~ (data + "and") ~> { (start, data) =>
+        syntax.Decl.DataGroup(data)(using Span(start, cursor))
+      }

@@ -1,42 +1,36 @@
-package mhamido.mantle
-package util
+package mhamido.mantle.util
 
 import com.github.plokhotnyuk.jsoniter_scala.macros._
 import com.github.plokhotnyuk.jsoniter_scala.core._
 import com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec
 
-case class Span private (from: Position, to: Position) {
-  def <>(that: Span): Span = {
-    val start = Ordering[Position].min(from, that.from)
-    val finish = Ordering[Position].max(to, that.to)
-    Span(start, finish)
-  }
+// todo: convert offsets into line/col positions
+case class Span(startOffset: Int, endOffset: Int):
+  require(startOffset <= endOffset)
+  def length: Int = endOffset - startOffset
+  def <>(that: Span): Span = Span(
+    startOffset min that.startOffset,
+    endOffset max that.endOffset
+  )
 
-  def <>(that: Position): Span = new Span(from, Ordering[Position].max(that, to))
-}
+object Span:
+  given Ordering[Span] =
+    Ordering.by[Span, Int](_.startOffset).orElseBy(_.endOffset)
 
-object Span {
-  def apply(from: Position, to: Position): Span = {
-    val start = Ordering[Position].min(from, to)
-    val finish = Ordering[Position].max(from, to)
-    new Span(start, finish)
-  }
-
-  given Ordering[Span] = Ordering.by[Span, Position](_.from).orElseBy(_.to)
-}
-
+@deprecated
 sealed trait Position:
   def line: Int
   def column: Int
   def path: os.Path
 
-  def <>(that: Position): Span = Span(this, that)
-  def <>(that: Span): Span = Span(this, that.to)
+  def <>(that: Position): Span = ???
+  def <>(that: Span): Span     = ???
   // def to(that: Seq[Span | Position]) = ???
 
   def render: String =
     s"$path:$line:$column"
 
+@deprecated
 object Position:
   given Ordering[Position] =
     Ordering.by[Position, Int](_.line).orElseBy(_.column)
@@ -52,8 +46,8 @@ object Position:
     override def nullValue: os.Path = os.temp()
 
   case object Empty extends Position:
-    def line: Int = -1
-    def column: Int = -1
+    def line: Int     = -1
+    def column: Int   = -1
     def path: os.Path = os.temp()
 
   case class InFile(

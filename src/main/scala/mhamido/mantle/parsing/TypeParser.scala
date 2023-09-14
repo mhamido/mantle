@@ -1,73 +1,63 @@
 package mhamido.mantle.parsing
 
-import mhamido.mantle.syntax
-import mhamido.mantle.util.Position
+import mhamido.mantle.util.Span
+import org.parboiled2.*
+import scala.language.implicitConversions
+import mhamido.mantle.util.Phase
+import mhamido.mantle.util.Context
+import os.Path
+import Parser.DeliveryScheme.Either
 
-trait TypeParser extends Parser {
-  def tpe(): Type = peek {
-    case Token.OpenBracket =>
-      val openBracket = consume(Token.OpenBracket).get
-      expect { case Token.PrimedName =>
-        val name = summon[Token].literal
-        consume(Token.CloseBracket)
-        consume(Token.ThinArrow)
-        val body = tpe()
-        Type.TypeFn(name, body)(using openBracket.pos <> body.info)
+trait TypeParser extends BaseParser:
+  def Type: Rule1[syntax.Type] =
+    def typeFn: Rule1[syntax.Type] = rule:
+      push(cursor) ~ "[" ~ PrimedName ~ "]" ~ "->" ~ Type ~> {
+        (start, param, body) =>
+          given Span = Span(start, cursor)
+          syntax.Type.TypeFn(param, body)
       }
 
-    case _ =>
-      val fromType = primType()
-      peek {
-        case Token.ThinArrow =>
-          val arrow  = advance()
-          val toType = tpe()
-          Type.Fn(fromType, toType)(using fromType.info <> toType.info)
-        case _ => fromType
+    def fn: Rule1[syntax.Type] = rule:
+      push(cursor) ~ ParameterizedType ~ ("->" ~ Type).? ~> {
+        (start, param, result) =>
+          result.fold(param)(
+            syntax.Type.Fn(param, _)(using Span(start, cursor))
+          )
       }
-  }
 
-  private def primType(): Type = peek {
-    case Token.OpenParen =>
-      val (openParen, types, closeParen) =
-        between(Token.OpenParen, Token.Comma, Token.CloseParen)(tpe)
-      Type.Tuple(types)(using ???)
-    case _ => namedType()
-  }
+    rule(typeFn | fn)
 
-  private def namedType(): Type = expect {
-    case Token.PrimedName =>
-      val token = summon[Token]
-      Type.Var(token.literal)(using token.pos <> pos)
-
-    case Token.UpperName | Token.LowerName =>
-      val token = summon[Token]
-      TypeParser.primOrNamedType(token.literal)(using token.pos <> pos)
-  }
-
-  private def parameterizedType(): Type = {
-    def loop(head: Type): Type = peek {
-      case Token.OpenBracket =>
-        // loop(Type.Apply(head, paramList()))
-        ???
-      case _ => head
+  def ParameterizedType: Rule1[syntax.Type] = rule:
+    push(cursor) ~ PrimType ~ ("[" ~ (Type + ",") ~ "]").? ~> {
+      (start, tpe, paramList) =>
+        paramList.fold(tpe)(
+          syntax.Type.Apply(tpe, _)(using Span(start, cursor))
+        )
     }
-    loop(primType())
-  }
 
-  private def paramList() =
-    between(Token.OpenBracket, Token.Comma, Token.CloseBracket)(tpe)
+  def PrimType: Rule1[syntax.Type] =
+    def tupledType: Rule1[syntax.Type] = rule:
+      push(cursor) ~ "(" ~ (Type + ",") ~ ")" ~> { (start, types) =>
+        assert(types.nonEmpty)
+        if types.lengthIs == 1 then types.head
+        else syntax.Type.Tuple(types)(using Span(start, cursor))
+      }
 
-}
+    def typeVar: Rule1[syntax.Type] = rule:
+      push(cursor) ~ PrimedName ~> { (start, name) =>
+        syntax.Type.Var(name)(using Span(start, cursor))
+      }
 
-object TypeParser {
-  import syntax.{Type, Info}
+    def namedType: Rule1[syntax.Type] = rule:
+      push(cursor) ~ (UpperName | LowerName) ~> { (start, name) =>
+        given Span = Span(start, cursor)
+        name match
+          case "Int"    => syntax.Type.Int()
+          case "Unit"   => syntax.Type.Unit()
+          case "Array"  => syntax.Type.Array()
+          case "Bool"   => syntax.Type.Bool()
+          case "String" => syntax.Type.String()
+          case name     => syntax.Type.Named(name)
+      }
 
-  def primOrNamedType(name: String)(using Info) = name match {
-    case "Int"    => Type.Int()
-    case "Unit"   => Type.Unit()
-    case "String" => Type.String()
-    case "Array"  => Type.Array()
-    case "Bool"   => Type.Bool()
-    case _        => Type.Named(name)
-  }
-}
+    rule(tupledType | typeVar | namedType)

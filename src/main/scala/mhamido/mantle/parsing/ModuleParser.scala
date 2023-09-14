@@ -1,49 +1,50 @@
-package mhamido.mantle.parsing
+package mhamido.mantle
+package parsing
 
-import mhamido.mantle.syntax
-import mhamido.mantle.util.Reporter
-import mhamido.mantle.parsing.Lexer
+import mhamido.mantle.util.Span
+import org.parboiled2.*
 
-import scala.util.Try
-import mhamido.mantle.parsing.Parser
+import scala.language.implicitConversions
+import mhamido.mantle.util.Phase
+import mhamido.mantle.util.Context
+import os.Path
+import Parser.DeliveryScheme.Either
 
-class ModuleParser(
-    override val tokens: BufferedIterator[Token]
-)(using override val reporter: Reporter)
-    extends Parser,
-      DeclParser,
-      ExprParser,
+// TODO: add .named annotations for nicer error messages
+
+class ModuleParser(val input: ParserInput)
+    extends BaseParser,
+      PatternParser,
       TypeParser,
-      PatternParser {
-  def module(): syntax.Module = {
-    consume(Token.Module)
-    val name = qualifiedName()
-    consume(Token.With)
-    val defs = decls(Token.Eof)
-    consume(Token.Eof)
-    syntax.Module(name, defs)
-  }
+      DeclParser,
+      ExprParser:
 
-  def qualifiedName(): Seq[syntax.Name] =
-    val names = List.newBuilder[syntax.Name]
-    consume(Token.UpperName).foreach(names += _.literal)
+  def Module: Rule1[syntax.Module] = rule:
+    "module" ~ QualifiedName ~ "with" ~ Decl.* ~ EOI ~> {
+      syntax.Module(_, _)
+    }
 
-    while !isAtEnd && !matches(Token.With) do
-      consume(Token.Dot)
-      consume(Token.UpperName).foreach(names += _.literal)
+  def QualifiedName: Rule1[Seq[String]] = rule:
+    UpperName ~ zeroOrMore("." ~ UpperName) ~> { _ +: _ }
 
-    names.result()
-}
+  def ReplTerm: Rule1[syntax.Decl | syntax.Expr] = rule:
+    Decl | Expr
 
-object ModuleParser {
-  def apply(path: os.Path)(using rep: Reporter): Try[syntax.Module] = Try {
-    val tokens = Lexer(path)
-    val parser = new ModuleParser(tokens)
-    parser.module()
-  }
+object ModuleParser extends Phase[os.Path, syntax.Module]:
+  override def apply(in: Path)(using ctx: Context): syntax.Module =
+    val contents = os.read(in, "utf-8")
+    val parser   = new ModuleParser(contents)
+    val result   = parser.Module.run()
+    result match
+      case Left(parseErr) =>
+        val err = parser.formatError(parseErr)
+        ctx.reporter.fatalError(err)
+      case Right(value) =>
+        value
 
-  def apply(str: String)(using rep: Reporter): Try[ModuleParser] = Try {
-    val tokens = new Lexer(os.temp(), str.iterator.buffered)
-    new ModuleParser(tokens.iterator.buffered)
-  }
-}
+  def apply(line: String)(using
+      ctx: Context
+  ): Either[String, syntax.Decl | syntax.Expr] =
+    val parser = new ModuleParser(line)
+    val result = parser.ReplTerm.run()
+    result.left.map(parser.formatError(_))

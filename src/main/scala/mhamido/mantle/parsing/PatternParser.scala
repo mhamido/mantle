@@ -1,96 +1,71 @@
 package mhamido.mantle.parsing
 
-// trait PatternParser extends Parser { self: TypeParser =>
-//   def basicPattern(): BasicPattern = ???
-//   def patterns(terminators: Token.Kind*): Seq[Pattern] =
-//     val patts = List.newBuilder[Pattern]
-//     while !isAtEnd && !matches(terminators*) do patts += simplePattern()
-//     patts.result()
+import mhamido.mantle.util.Span
+import org.parboiled2.*
+import scala.language.implicitConversions
+import mhamido.mantle.util.Phase
+import mhamido.mantle.util.Context
+import os.Path
+import Parser.DeliveryScheme.Either
 
-//   def pattern(terminators: Token.Kind*): Pattern =
-//     val patt = ascriptionPattern((Token.As +: terminators)*)
-//     peek {
-//       case Token.As =>
-//         advance()
-//         consume(Token.LowerName)
-//           .fold(patt)(x =>
-//             Pattern.Alias(patt, x.literal)(using patt.info <> pos)
-//           )
-//       case _ => patt
-//     }
+trait PatternParser extends BaseParser:
+  self: TypeParser =>
 
-//   def ascriptionPattern(terminators: Token.Kind*): Pattern =
-//     val patt = applicationPattern(terminators: _*)
-//     peek {
-//       case Token.Colon =>
-//         advance()
-//         val typ = tpe(terminators)
-//         Pattern.Ascribe(patt, typ)(using patt.info <> pos)
-//       case _ => patt
-//     }
+  def Pattern: Rule1[syntax.Pattern] = rule:
+    AscribedPattern
 
-//   def applicationPattern(terminators: Token.Kind*): Pattern = peek {
-//     case Token.UpperName =>
-//       val constructor = advance()
-//       val arguments = List.newBuilder[Pattern]
+  def TupledPattern: Rule1[syntax.Pattern] = rule:
+    push(cursor) ~ "(" ~ (Pattern * ",") ~ ")" ~> { (start, elems) =>
+      given Span = Span(start, cursor)
+      if elems.isEmpty then syntax.Pattern.Unit()
+      else if elems.lengthIs == 1 then elems.head
+      else syntax.Pattern.Tuple(elems)
+    }
 
-//       while !isAtEnd && !matches(terminators: _*) do
-//         arguments += simplePattern()
+  def BasicPattern: Rule1[syntax.Pattern] =
+    def varname = rule:
+      push(cursor) ~ LowerName ~> { (start, name) =>
+        given Span = Span(start, cursor)
+        name match
+          case "true"  => syntax.Pattern.True()
+          case "false" => syntax.Pattern.False()
+          case _       => syntax.Pattern.Var(name)
+      }
+    def constructor = rule:
+      push(
+        cursor
+      ) ~ UpperName ~ ("[" ~ (Type + ",") ~ "]").? ~ Pattern.? ~> {
+        (start, name, typeArgs, args) =>
+          given Span = Span(start, cursor)
+          val tyArgs = typeArgs.getOrElse(Seq.empty)
+          syntax.Pattern.Constr(name, tyArgs, args)
+      }
 
-//       Pattern.Constructor(constructor.literal, arguments.result())(using
-//         constructor.pos <> pos
-//       )
+    def wildcard = rule:
+      push(cursor) ~ "_" ~> { start =>
+        syntax.Pattern.Wildcard()(using Span(start, cursor))
+      }
 
-//     case _ =>
-//       simplePattern()
-//   }
+    def int = rule:
+      push(cursor) ~ Integer ~> { (start, value) =>
+        syntax.Pattern.Int(value)(using Span(start, cursor))
+      }
 
-//   def simplePattern(): Pattern = expect {
-//     case Token.Int =>
-//       val token = summon[Token]
-//       Pattern.Int(token.literal.toInt)(using token.pos <> pos)
-//     case Token.String =>
-//       val token = summon[Token]
-//       Pattern.String(token.literal)(using token.pos <> pos)
-//     case Token.LowerName =>
-//       val token = summon[Token]
-//       token.literal match
-//         case "_" =>
-//           Pattern.Wildcard()(using token.pos <> pos)
-//           // TODO: make _ a token on it's own.
-//         case "true"  => Pattern.True()(using summon[Token].pos <> pos)
-//         case "false" => Pattern.False()(using summon[Token].pos <> pos)
-//         case name    => Pattern.Var(name)(using summon[Token].pos <> pos)
+    def char = rule:
+      push(cursor) ~ CharLiteral ~> { (start, value) =>
+        syntax.Pattern.Chr(value.head)(using Span(start, cursor))
+      }
 
-//     case Token.UpperName =>
-//       Pattern.Constructor(summon[Token].literal, Nil)(using summon[Token].pos <> pos)
+    def string = rule:
+      push(cursor) ~ StringLiteral ~> { (start, value) =>
+        syntax.Pattern.String(value)(using Span(start, cursor))
+      }
 
-//     case Token.OpenParen =>
-//       val openParen = summon[Token]
-//       val patt: Pattern = peek {
-//         case Token.CloseParen => Pattern.Unit()(using openParen.pos <> pos)
-//         case _ =>
-//           val subpatterns = List.newBuilder[Pattern]
-//           subpatterns += pattern(Token.Comma, Token.CloseParen)
+    rule(wildcard | int | char | string | varname | constructor | TupledPattern)
 
-//           while !isAtEnd && matches(Token.Comma) do
-//             advance()
-//             subpatterns += pattern(Token.Comma, Token.CloseParen)
-
-//           // A pattern like `(p)` should just be equivalent to `p`.
-//           subpatterns.result() match
-//             case List(patt) => patt
-//             case patterns   => Pattern.Tuple(patterns)(using openParen.pos <> pos)
-//       }
-
-//       consume(Token.CloseParen)
-//       patt
-//   }
-// }
-
-trait PatternParser extends Parser { self: TypeParser =>
-  def basicPattern(): BasicPattern = ???
-  def patterns(terminators: Token.Kind*): Seq[Pattern] = ???
-  def pattern(terminators: Token.Kind*): Pattern = ???
-  def simplePattern(): Pattern = ???
-}
+  def AscribedPattern: Rule1[syntax.Pattern] = rule:
+    push(cursor) ~ BasicPattern ~ (":" ~ Type).? ~> {
+      (start, pattern, ascription) =>
+        given Span = Span(start, cursor)
+        ascription.fold(pattern)(syntax.Pattern.Ascribe(pattern, _))
+    }

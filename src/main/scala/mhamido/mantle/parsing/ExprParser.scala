@@ -1,224 +1,158 @@
 package mhamido.mantle.parsing
 
-import mhamido.mantle.syntax
+import mhamido.mantle.util.Span
+import org.parboiled2.*
+import scala.language.implicitConversions
+import mhamido.mantle.util.Phase
+import mhamido.mantle.util.Context
+import os.Path
+import Parser.DeliveryScheme.Either
 import mhamido.mantle.Operator
 
-trait ExprParser extends Parser {
-  self: DeclParser & TypeParser & PatternParser =>
+trait ExprParser extends BaseParser:
+  self: TypeParser & DeclParser & PatternParser =>
 
-  type Prefix = Token => Expr
-  type Infix  = (Expr, Token) => Expr
-
-  private val prefixes: PartialFunction[Token.Kind, Prefix] = {
-    case Token.Not => { token =>
-      val rhs = expr(ExprParser.HighestPrec)
-      Expr.Not(rhs)(using token.pos <> rhs.info)
-    }
-
-    case Token.Sub => { token =>
-      val rhs = expr(ExprParser.HighestPrec)
-      Expr.Negate(rhs)(using token.pos <> rhs.info)
-    }
-
-    case Token.If => { token =>
-      val cond = expr()
-      consume(Token.Then)
-      val thenp = expr() // (Token.Else)
-      consume(Token.Else)
-      val elsep = expr()
-      Expr.If(cond, thenp, elsep)(using token.pos <> elsep.info)
-    }
-
-    case Token.Let => { token =>
-      val defs = decls(Token.In)
-      consume(Token.In)
-      val body = expr()
-      Expr.Let(defs, body)(using token.pos <> pos)
-    }
-
-    case Token.Fn => { token =>
-      val paramList = params()
-      consume(Token.ThickArrow)
-      val body = expr()
-      Expr.Fn(paramList, body)(using token.pos <> pos)
-    }
-
-    case Token.Case => { token =>
-      val scrutnee = expr() // condExpr(Token.With)
-      consume(Token.Of)
-      consume(Token.OpenBrace)
-      val cases = matchArms()
-      consume(Token.CloseBrace)
-      Expr.Case(scrutnee, cases)(using token.pos <> pos)
-    }
-
-    case kind if ExprParser.PrimStart contains kind => { token =>
-      val fn   = prim(token)
-      val args = List.newBuilder[Expr]
-      while !isAtEnd && matches(ExprParser.PrimStart*) do
-        args += prim(advance())
-      val argsResult = args.result()
-      argsResult.foldLeft(fn)(Expr.Apply(_, _)(using fn.info.from <> pos))
-    }
-  }
-
-  def param(): Param = ???
-
-  private val leftAssoc: Infix = (lhs, op) => {
-    Expr.Bin(Operator(op.kind), lhs, expr(precedence(op.kind)))(using lhs.info)
-  }
-
-  private def prim(token: Token): Expr = token.kind match {
-    case Token.Int =>
-      Expr.Int(token.literal.toInt)(using token.pos <> pos)
-
-    case Token.String =>
-      Expr.String(token.literal)(using token.pos <> pos)
-
-    case Token.LowerName =>
-      if (token.literal == "true")
-        Expr.True()(using token.pos <> pos)
-      else if (token.literal == "false")
-        Expr.False()(using token.pos <> pos)
-      else
-        Expr.Var(token.literal)(using token.pos <> pos)
-
-    case Token.UpperName =>
-      Expr.Var(token.literal)(using token.pos <> pos)
-
-    case Token.OpenParen if peek.kind == Token.CloseParen =>
-      advance()
-      Expr.Unit()(using token.pos <> pos)
-
-    case Token.OpenParen =>
-      val result = expr() // (Token.CloseParen, Token.Comma)
-      val elems = peek {
-        case Token.Comma =>
-          val elemsbuilder = List.newBuilder[Expr]
-          elemsbuilder += result
-          while !isAtEnd && matches(Token.Comma) do
-            advance()
-            elemsbuilder += expr() // (Token.Comma, Token.CloseParen)
-          val elems = elemsbuilder.result()
-          Expr.Tuple(elems)(using token.pos <> pos)
-        case _ => result
+  private def TupledExpr: Rule1[syntax.Expr] =
+    def unit = rule:
+      push(cursor) ~ "(" ~ ")" ~> { (start) =>
+        syntax.Expr.Unit()(using Span(start, cursor))
       }
-      consume(Token.CloseParen)
-      elems
 
-    case tpe =>
-      reporter.fatalError(
-        Parser.Unexpected(ExprParser.PrimStart, Some(token)),
-        token.pos
-      )
-  }
+    def nonEmptyTuple = rule:
+      push(cursor) ~ "(" ~ (Expr + ",") ~ ")" ~> { (start, elems) =>
+        if elems.lengthIs == 1 then elems.head
+        else syntax.Expr.Tuple(elems)(using Span(start, cursor))
+      }
+    rule(unit | nonEmptyTuple)
 
-  private val infixes = ExprParser.Operators.flatten.map(_ -> leftAssoc).toMap
+  private def AtomicExpr: Rule1[syntax.Expr] =
+    def int = rule:
+      push(cursor) ~ Integer ~> { (start, it) =>
+        syntax.Expr.Int(it)(using Span(start, cursor))
+      }
 
-  private def precedence(x: Token.Kind): Int =
-    ExprParser.Operators.reverse
-      .indexWhere(_.contains(x))
+    def bool = rule:
+      push(cursor) ~ capture("true" | "false") ~> { (start, lit) =>
+        given Span = Span(start, cursor)
+        lit.strip() match
+          case "true"  => syntax.Expr.True()
+          case "false" => syntax.Expr.False()
+      }
 
-  private def unary(): (Expr, Token) =
-    prefixes.lift(peek.kind) match {
-      case None =>
-        reporter.fatalError(
-          Parser.Unexpected(
-            Token.Kind.values.toSeq.filter(prefixes.isDefinedAt(_)),
-            if !isAtEnd then Some(peek) else None
-          )
+    def varname = rule:
+      push(cursor) ~ (LowerName | UpperName) ~> { (start, name) =>
+        syntax.Expr.Var(name)(using Span(start, cursor))
+      }
+
+    def string = rule:
+      push(cursor) ~ StringLiteral ~> { (start, str) =>
+        syntax.Expr.String(str)(using Span(start, cursor))
+      }
+
+    def char = rule:
+      push(cursor) ~ CharLiteral ~> { (start, chr) =>
+        syntax.Expr.Chr(chr.head)(using Span(start, cursor))
+      }
+
+    rule(TupledExpr | int | bool | string | char | varname)
+
+  def Expr: Rule1[syntax.Expr] =
+    def fnExpr: Rule1[syntax.Expr] = rule:
+      push(cursor) ~ "fn" ~ Param.+ ~ "=>" ~ Expr ~> { (start, params, body) =>
+        syntax.Expr.Fn(params, body)(using Span(start, cursor))
+      }
+
+    def ifExpr: Rule1[syntax.Expr] = rule:
+      push(cursor) ~ "if" ~ Expr ~ "then" ~ Expr ~ "else" ~ Expr ~> {
+        (start, cond, thenp, elsep) =>
+          syntax.Expr.If(cond, thenp, elsep)(using Span(start, cursor))
+      }
+    def matchExpr: Rule1[syntax.Expr] = rule:
+      push(
+        cursor
+      ) ~ "match" ~ Expr1 ~ "with" ~ "|".? ~ (MatchArm * "|")
+        .named("alternatives") ~ "end" ~> { (start, scrutnee, arms) =>
+        syntax.Expr.Match(scrutnee, arms)(using Span(start, cursor))
+      }
+    def letExpr: Rule1[syntax.Expr] = rule:
+      push(cursor) ~ "let" ~ Decl.+ ~ "in" ~ Expr ~> { (start, decls, body) =>
+        syntax.Expr.Let(decls, body)(using Span(start, cursor))
+      }
+
+    def ascriptionExpr: Rule1[syntax.Expr] = rule:
+      Expr1 ~ (":" ~ Type).? ~> { (expr, tpe) =>
+        tpe.fold(expr)(tpe =>
+          syntax.Expr.Ascribe(expr, tpe)(using expr.info <> tpe.info)
         )
+      }
+    rule(fnExpr | ifExpr | letExpr | matchExpr | ascriptionExpr)
 
-      case Some(prefixParser) =>
-        val token  = advance()
-        val result = prefixParser(token)
-        (result, token)
-    }
+  inline def InfixLeft(expr: => Rule1[syntax.Expr])(
+      ops: (String, Operator)*
+  ): Rule1[syntax.Expr] =
+    InfixLeft(expr, Map.from(ops))
 
-  def expr(prec: Int = 0): Expr = {
-    def nextPrec: Int = {
-      infixes.get(peek.kind).fold(0)(_ => precedence(peek.kind))
-    }
-
-    def loop(left: Expr, token: Token): Expr = {
-      // pprint.pprintln((left, token), showFieldNames = false, height = 1)
-      if (prec < nextPrec) {
-        val currToken   = advance()
-        val infixParser = infixes(currToken.kind)
-        val currLeft    = infixParser(left, currToken)
-        loop(currLeft, currToken)
-      } else {
-        left
+  inline def InfixLeft(
+      expr: => Rule1[syntax.Expr],
+      ops: Map[String, Operator]
+  ): Rule1[syntax.Expr] = rule:
+    expr ~ (WS ~ valueMap(ops) ~ WS ~ expr ~> ((_, _))).* ~> { (head, tail) =>
+      tail.foldLeft(head) { (lhs, symRhs) =>
+        val (sym, rhs) = symRhs
+        given Span     = lhs.info <> rhs.info
+        syntax.Expr.Bin(sym, lhs, rhs)
       }
     }
 
-    val (expr, token) = unary()
-    loop(expr, token)
-  }
+  // TODO: Compress these rules into an ordered table
+  // See: https://hackage.haskell.org/package/megaparsec-5.2.0/docs/Text-Megaparsec-Expr.html#v:makeExprParser
 
-  private def matchArm(): MatchArm = {
-    val pat = pattern(Token.ThinArrow, Token.If)
-    val guard = peek {
-      case Token.If =>
-        advance()
-        Some(expr())
-      case _ => None
-    }
+  def Expr1: Rule1[syntax.Expr] =
+    InfixLeft(Expr2)("||" -> Operator.LogicalOr)
 
-    consume(Token.ThinArrow)
-    val body = expr()
-    MatchArm(pat, body, guard)
-  }
+  def Expr2: Rule1[syntax.Expr] =
+    InfixLeft(Expr3)("&&" -> Operator.LogicalAnd)
 
-  private def matchArms(): Seq[MatchArm] = peek {
-    case Token.CloseBrace => Seq.empty
-    case _ =>
-      val cases = List.newBuilder[MatchArm]
-      cases += matchArm()
+  def Expr3: Rule1[syntax.Expr] =
+    InfixLeft(Expr4)(
+      "==" -> Operator.Eql,
+      "/=" -> Operator.NotEql,
+      "<"  -> Operator.LessThan,
+      "<=" -> Operator.LessThanOrEql,
+      ">"  -> Operator.GreaterThan,
+      ">=" -> Operator.GreaterThanOrEql
+    )
 
-      while !isAtEnd && !matches(Token.CloseBrace) do
-        consume(Token.Semi)
-        cases += matchArm()
+  def Expr4: Rule1[syntax.Expr] =
+    InfixLeft(Expr5)(
+      "+" -> Operator.Add,
+      "-" -> Operator.Sub
+    )
 
-      // TODO: fix trailing semi in cases
-      peek {
-        case Token.Semi => advance()
-        case _          =>
+  def Expr5: Rule1[syntax.Expr] =
+    InfixLeft(Expr6)(
+      "*" -> Operator.Mul,
+      "/" -> Operator.Div
+    )
+
+  def Expr6: Rule1[syntax.Expr] =
+    def typeArg: Rule1[syntax.Arg] = rule:
+      push(cursor) ~ "[" ~ Type ~ "]" ~> { (start, tpe) =>
+        syntax.Arg.Type(tpe)(using Span(start, cursor))
+      }
+    def valueArg: Rule1[syntax.Arg] = rule:
+      AtomicExpr ~> (expr => syntax.Arg.Value(expr)(using expr.info))
+
+    def Arg: Rule1[syntax.Arg] = rule(typeArg | valueArg)
+    rule:
+      AtomicExpr ~ (WS ~ Arg).* ~> { (fn, args) =>
+        args.foldLeft(fn) { (app, arg) =>
+          syntax.Expr.Apply(app, arg)(using app.info <> arg.info)
+        }
       }
 
-      cases.result()
-  }
-
-  // private def application(terminators: Token.Kind*): Expr =
-  //   val fn = atomic()
-  //   val args = List.newBuilder[Expr]
-
-  //   while !isAtEnd && !matches(terminators*) && matches(ExprParser.Start*) do
-  //     args += atomic()
-  //   args.result().foldLeft(fn)(Expr.Apply(_, _)(using fn.info))
-}
-
-object ExprParser {
-  val Operators: Seq[Seq[Token.Kind]] = Seq(
-    Seq(Token.Mul, Token.Div),
-    Seq(Token.Add, Token.Sub),
-    Seq(
-      Token.LessThan,
-      Token.LessThanOrEql,
-      Token.GreaterThan,
-      Token.GreaterThanOrEql
-    ),
-    Seq(Token.Eql, Token.NotEql),
-    Seq(Token.LogicalAnd),
-    Seq(Token.LogicalOr)
-  )
-
-  val HighestPrec = Operators.map(_.length).sum + 1
-  val PrimStart = Seq(
-    Token.Int,
-    Token.String,
-    Token.LowerName,
-    Token.UpperName,
-    Token.OpenParen
-  )
-}
+  def MatchArm: Rule1[syntax.MatchArm] = rule:
+    push(cursor) ~ Pattern ~ ("if" ~ Expr1).? ~ "=>" ~ Expr ~> {
+      (start, pattern, guard, body) =>
+        syntax.MatchArm(pattern, body, guard)(using Span(start, cursor))
+    }

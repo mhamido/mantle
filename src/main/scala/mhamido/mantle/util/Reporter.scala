@@ -13,6 +13,7 @@ class Reporter:
   def info[A](msg: A, pos: Position = Position.Empty): Unit =
     report(Reporter.Info, msg, pos)
 
+
   def error[A](msg: A, pos: Position = Position.Empty): Unit =
     _hadErrors = true
     report(Reporter.Error, msg, pos)
@@ -23,6 +24,10 @@ class Reporter:
   def fatalError[A <: Exception](msg: A, pos: Position = Position.Empty): Nothing =
     report(Reporter.Error, msg, pos)
     throw msg
+  
+  def fatalError[A](msg: A): Nothing =
+    Console.err.println(msg)
+    sys.exit(1)
 
   def exitIfErrors(): Unit = if hadErrors then sys.exit(1)
 
@@ -38,3 +43,4 @@ object Reporter:
   final val Warning = Color.Yellow("Warning").render
 
   given (using ctx: Context): Reporter = ctx.reporter
+  
