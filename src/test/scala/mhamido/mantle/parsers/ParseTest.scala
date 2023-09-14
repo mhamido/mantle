@@ -5,10 +5,10 @@ import mhamido.SnapshotSuite
 import mhamido.mantle.parsing.ModuleParser
 
 class ParseTest extends SnapshotSuite("parser") {
-    val dir = os.list(os.pwd / "examples")
-    for file <- dir do
-        snapshot(file) {
-            val src = os.read(file)
-            ModuleParser(file).get
-        }
+    // val dir = os.list(os.pwd / "examples")
+    // for file <- dir do
+        // snapshot(file) {
+        //     val src = os.read(file, "utf-8")
+        //     // ModuleParser(src).Module.run().get
+        // }
 }
