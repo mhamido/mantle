@@ -4,7 +4,7 @@ fun mod (m: Int) (n: Int): Int = m - n * (m / n)
 
 fun collatz (n: Int): Int =
     if n <= 1 then 0
-    else if mod m 2 = 0 then 1 + collatz (n / 2)
+    else if mod m 2 == 0 then 1 + collatz (n / 2)
     else 1 + collatz (3 * n + 1)
 
 fun main (): Unit =

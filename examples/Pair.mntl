@@ -1,11 +1,9 @@
 module Pair with
 
-datatype Pair a b = MkPair
-    /* fst */ a 
-    /* snd */ b
+datatype Pair ['a, 'b] = MkPair (/* fst */ 'a, /* snd */ 'b)
 
-fun fst [a, b](p: Pair a b): a =
-    case p of { MkPair x _ => x }
+fun fst ['a] ['b] (p: Pair['a, 'b]): 'a =
+    match p with MkPair (x, _) => x end
 
-fun snd [a, b](p: Pair a b): b =
-    case p of { MkPair _ x => x }
+fun snd ['a] ['b] (p: Pair['a, 'b]): 'b =
+    match p with MkPair (_, x) => x end

@@ -1,18 +1,19 @@
 module Range with
 
-data Range = MkRange
-    /* start:  */ Int 
-    /* end:    */ Int
+datatype Range = MkRange (
+    /* start:  */ Int,
+    /* end:    */ Int,
     /* stride: */ Int
+)
 
 fun rangeBy (start: Int) (end: Int) (stride: Int) = 
-    MkRange start end stride
+    MkRange (start, end, stride)
 
 fun range (start: Int) (end: Int): Range = rangeBy start end 1
 
-fun toList (range: Range): List Int = 
-    let val MkRange start end stride = range
-        fun loop (end: Int) (acc: List Int) =
+fun toList (range: Range): List[Int] = 
+    let val MkRange (start, end, stride) = range
+        fun loop (end: Int) (acc: List[Int]) =
             if end >= start then loop (end - stride) (end :: acc)
             else acc
     in loop end []

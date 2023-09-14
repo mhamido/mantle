@@ -1,22 +1,22 @@
 module Peano with
 
-data Nat = Zero | Succ Nat
+datatype Nat = Zero | Succ Nat
 
 fun fromInt (n: Int): Nat = 
   if n <= 0 then Zero
   else Succ (fromInt (n - 1))
 
 fun toInt (n: Nat): Int = 
-  case n of { 
-    Zero   -> 0;
-    Succ m -> toInt m + 1
-  }
+  match n with
+  | Zero   => 0
+  | Succ m => toInt m + 1
+  end
 
 fun add (m: Nat) (n: Nat): Nat = 
-  case m of {
-    Zero   -> n;
-    Succ o -> add o (Succ n)
-  }
+  match m with
+  | Zero   => n
+  | Succ o => add o (Succ n)
+  end
 
 /* TODO: Monus */
 

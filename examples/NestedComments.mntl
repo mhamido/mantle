@@ -20,15 +20,16 @@ fun factorial (n: Int): Int =
     in loop n 1
 
 fun main () = 
-    for i <- 0 to 15 do
-        /* Imperative constructs are pretty useful in these scenarios. */
-        let val () = println "==<>=="
-            val () = println i
-            /* ...or not. I've wanted to add a 'block' syntax like Scala/Haskell's `{;}`
-                But that might clash with anonymous record syntax that I want.
-             */
-            val () = println (recFactorial i)
-            val () = println (iterFactorial i)
-        in  println "==<>=="
+    let 
+        val end: Int = 15 
+        fun loop (i: Int): Unit =
+            if i > 15 then () else
+            let val () = println "==<>=="
+                val () = println i
+                val () = println (recFactorial i)
+                val () = println (iterFactorial i)
+                val () = println "==<>=="
+            in loop (i + 1)
+    in loop 0
 
 /* And now, we're done */
